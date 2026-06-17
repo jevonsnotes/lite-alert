@@ -1,0 +1,12 @@
+# Exclude build noise and binaries from the docker build context
+# so the image only carries source.
+**/node_modules
+**/dist
+**/target
+**/.idea
+**/.vscode
+**/.git
+**/.gradle
+**/build
+docker/data
+*.log

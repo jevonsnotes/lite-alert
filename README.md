@@ -1,37 +1,129 @@
-# lite-alert
+# Lite-Alert
 
-#### 介绍
-轻量级消息通知服务
+> 一个无数据库化、文件加密存储、前后端一体的轻量级消息通知服务。
+> 单 JAR 启动，配置即可，docker-compose 一键部署。
 
-#### 软件架构
-软件架构说明
+## 特性
 
+- **轻量**：单 JAR、无外部数据库 / 消息队列依赖
+- **安全**：数据落盘加密，敏感配置 Jasypt 包裹
+- **一体化**：Vue 3 前端打包进 Spring Boot 静态资源，单端口对外
+- **Webhook 接入**：HTTP 调用 → Schema 校验 → 报文转换（JSONPath） → 邮件通知
+- **ApiKey**：独立凭证，支持有效期、scope 授权、撤销
+- **公开 Topic**：可配置免认证 + IP 白名单，适配 GitHub / GitLab 等回调
+- **可扩展**：通知渠道以策略模式抽象，邮件之外可逐步加钉钉 / 飞书 / SMS
 
-#### 安装教程
+## 文档
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+完整设计放在 [`docs/design`](./docs/design)：
 
-#### 使用说明
+| # | 内容 |
+| --- | --- |
+| 00 | [总览](./docs/design/00-overview.md) |
+| 01 | [架构与数据流](./docs/design/01-architecture.md) |
+| 02 | [数据模型与文件存储](./docs/design/02-data-model.md) |
+| 03 | [认证与权限](./docs/design/03-auth.md) |
+| 04 | [命名空间与 Topic](./docs/design/04-namespace-topic.md) |
+| 05 | [报文转换](./docs/design/05-message-transform.md) |
+| 06 | [通知渠道与邮箱](./docs/design/06-notify-channel.md) |
+| 07 | [Webhook 接入接口](./docs/design/07-webhook-api.md) |
+| 08 | [前端页面规划](./docs/design/08-frontend.md) |
+| 09 | [部署方案](./docs/design/09-deploy.md) |
+| 10 | [实施路线图](./docs/design/10-roadmap.md) |
+| 11 | [ApiKey 管理](./docs/design/11-apikey.md) |
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## 工程结构
 
-#### 参与贡献
+```
+lite-alert/
+├── pom.xml                      # Maven 父 pom (Spring Boot 3.5.15, Java 17)
+├── backend/                     # Spring Boot 单模块
+│   └── src/main/...
+├── frontend/                    # Vite + Vue 3 + Element Plus
+│   └── src/...
+├── docker/
+│   ├── Dockerfile               # 多阶段：node 构建 → maven 构建 → jre 运行
+│   ├── docker-compose.yml
+│   └── .env.example
+└── docs/design/                 # 系统设计文档
+```
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+## 快速开始
 
+### 本地开发（前后端分离）
 
-#### 特技
+需要 JDK 17 + Maven 3.9+ + Node.js 20+。
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+```bash
+# 1) 启后端（端口 8080）
+mvn -pl backend -am spring-boot:run
+
+# 2) 另开一个终端启前端（端口 5173，已配置 /api 反代到 8080）
+cd frontend
+npm install
+npm run dev
+```
+
+浏览器访问 http://localhost:5173 ，请求会代理到后端 8080。
+
+### 一体打包（前端嵌入 JAR）
+
+```bash
+cd frontend && npm install && npm run build   # 输出到 backend/src/main/resources/static
+cd ..
+mvn -pl backend -am package -DskipTests
+java -jar backend/target/lite-alert.jar
+```
+
+访问 http://localhost:8080 即是完整应用。
+
+### Docker
+
+```bash
+cd docker
+cp .env.example .env
+# 编辑 .env，至少替换 JASYPT_ENCRYPTOR_PASSWORD / LITE_ALERT_JWT_SECRET / LITE_ALERT_APIKEY_PEPPER
+docker compose up -d --build
+```
+
+数据持久化到 `docker/data/`。
+
+## 默认账号
+
+`application.yml` 内置初始管理员（仅当 `users.json` 不存在时生效）：
+
+| 用户名 | 密码 |
+| --- | --- |
+| `admin` | `admin123`（dev profile 默认；生产部署请通过 ENC(...) 覆盖） |
+
+> 初始化逻辑会在 M1 落地；M0 阶段后端只暴露 `/api/health`。
+
+## 配置项
+
+主要环境变量：
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `JASYPT_ENCRYPTOR_PASSWORD` | 生产必填 | 解密 application.yml 中的 ENC(…) |
+| `LITE_ALERT_JWT_SECRET` | 生产必填 | JWT 签名密钥（≥ 32 字符） |
+| `LITE_ALERT_APIKEY_PEPPER` | 生产必填 | ApiKey HMAC pepper，**一旦设定不可轮换** |
+| `LITE_ALERT_DATA_DIR` | 否 | 数据目录，默认 `./data`（容器内 `/data`） |
+| `SPRING_PROFILES_ACTIVE` | 否 | 默认 `dev`，生产建议 `prod` |
+
+## 状态
+
+当前里程碑：**M0 脚手架完成**。后续按 [`docs/design/10-roadmap.md`](./docs/design/10-roadmap.md) 推进：
+
+- [x] M0 工程脚手架
+- [ ] M1 认证骨架
+- [ ] M2 文件存储基座
+- [ ] M3 命名空间 + Topic
+- [ ] M3.5 ApiKey 模块
+- [ ] M4 报文格式 + 转换
+- [ ] M5 邮箱 + 通知派发
+- [ ] M6 Webhook 接入正式版
+- [ ] M7 部署与运维
+
+## 许可
+
+[MIT](./LICENSE)

@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  lite-alert:
+    image: lite-alert:${VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: lite-alert
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:?must be set}
+      LITE_ALERT_JWT_SECRET: ${LITE_ALERT_JWT_SECRET:?must be set}
+      LITE_ALERT_APIKEY_PEPPER: ${LITE_ALERT_APIKEY_PEPPER:?must be set}
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data:/data
+      # optional: drop a custom application-prod.yml here to override built-in config
+      # - ./config:/opt/lite-alert/config:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

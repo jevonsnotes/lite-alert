@@ -1,23 +1,47 @@
-# Compiled class file
+# ---------- Java / Maven ----------
 *.class
-
-# Log file
 *.log
-
-# BlueJ files
 *.ctxt
-
-# Mobile Tools for Java (J2ME)
 .mtj.tmp/
+target/
+!.mvn/wrapper/maven-wrapper.jar
 
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
+# ---------- IDE ----------
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# ---------- Node / Vite ----------
+node_modules/
+dist/
+.npm/
+.yarn/
+.pnp.*
+*.tsbuildinfo
+auto-imports.d.ts
+components.d.ts
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+
+# ---------- Docker / runtime data ----------
+docker/data/
+docker/.env
+docker/config/
+backend/data/
+data/
+
+# ---------- Generated frontend bundles ----------
+# Vite writes hashed assets here on `mvn package`; index.html in git is a
+# placeholder used by `mvn spring-boot:run`.
+backend/src/main/resources/static/assets/
+
+# ---------- JVM crash dumps ----------
 hs_err_pid*
+replay_pid*
