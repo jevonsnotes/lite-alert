@@ -144,6 +144,23 @@ public class Topic {
         private String outputXmlTemplate;
         /** WEBHOOK only: transform mappings. */
         private Transform transform;
+        /** WEBHOOK only: response body assertion. */
+        private WebhookResponseCheck responseCheck;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WebhookResponseCheck {
+        private boolean enabled;
+        private BodyType bodyType = BodyType.AUTO;
+        private String successPath;
+        private String successValue;
+        private String messagePath;
+        private Operator operator = Operator.EQ;
+
+        public enum BodyType { AUTO, JSON, XML }
+        public enum Operator { EQ, NE, CONTAINS, REGEX, GT, LT, EXISTS }
     }
 
     @Data

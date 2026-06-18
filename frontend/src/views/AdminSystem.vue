@@ -213,7 +213,7 @@ async function saveSettings() {
           <el-select v-model="settings.auditRetention.unit" size="small" style="width: 90px; margin-left: 8px">
             <el-option v-for="u in UNITS" :key="u.value" :label="u.label" :value="u.value" />
           </el-select>
-          <div class="muted">超过保留期的 <code>audit/yyyy-MM-dd.log</code> 文件每天 03:17 自动删除。</div>
+          <div class="muted">超过保留期的审计记录会每天 03:17 从数据库中自动清理。</div>
         </el-form-item>
         <el-form-item label="仪表盘默认时间窗口">
           <el-input-number v-model="settings.dashboardDefaultTrend.value" :min="1" :max="365" size="small" />

@@ -34,9 +34,9 @@ export default defineConfig({
     }
   },
   build: {
-    // Write directly into Spring Boot's static resources. The placeholder
-    // `static/index.html` checked into git is overwritten on each build.
-    outDir: '../backend/src/main/resources/static',
+    // Write frontend bundles into Maven target first. backend/pom.xml copies
+    // them into target/classes/static before the Spring Boot JAR is packaged.
+    outDir: '../backend/target/frontend-static',
     emptyOutDir: true,
     sourcemap: false,
     chunkSizeWarningLimit: 1500

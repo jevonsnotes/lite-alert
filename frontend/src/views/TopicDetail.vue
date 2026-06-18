@@ -28,7 +28,17 @@ type ChannelTemplate = {
   outputFormat?: 'JSON' | 'XML'
   outputTemplate?: any          // WEBHOOK only: outbound JSON template
   outputXmlTemplate?: string    // WEBHOOK only: outbound XML template
+  responseCheck?: WebhookResponseCheck
   transform?: Transform         // WEBHOOK only: field mappings
+}
+
+type WebhookResponseCheck = {
+  enabled: boolean
+  bodyType: 'AUTO' | 'JSON' | 'XML'
+  successPath: string
+  successValue: string
+  messagePath?: string
+  operator: 'EQ' | 'NE' | 'CONTAINS' | 'REGEX' | 'GT' | 'LT' | 'EXISTS'
 }
 
 type Topic = {
@@ -161,7 +171,7 @@ const currentChannel = computed(() => CHANNELS.find(c => c.value === channelTab.
 
 const templates = ref<Record<ChannelType, ChannelTemplate>>({
   EMAIL: {}, DINGTALK: {}, FEISHU: {}, WECOM: {},
-  WEBHOOK: { transform: { enabled: false, mappings: [] } }
+  WEBHOOK: { transform: { enabled: false, mappings: [] }, responseCheck: { enabled: false, bodyType: 'AUTO', successPath: '', successValue: '', messagePath: '', operator: 'EQ' } }
 })
 
 const TEMPLATE_PRESETS: Record<ChannelType, ChannelTemplate> = {
@@ -232,6 +242,14 @@ const TEMPLATE_PRESETS: Record<ChannelType, ChannelTemplate> = {
   <traceId>{{traceId}}</traceId>
   <receivedAt>{{receivedAt}}</receivedAt>
 </alert>`,
+    responseCheck: {
+      enabled: false,
+      bodyType: 'AUTO',
+      successPath: '$.errcode',
+      successValue: '0',
+      messagePath: '$.errmsg',
+      operator: 'EQ'
+    },
     transform: {
       enabled: true,
       mappings: [
@@ -251,6 +269,7 @@ function applyWebhookPreset() {
   templates.value.WEBHOOK.outputFormat = templates.value.WEBHOOK.outputFormat ?? 'JSON'
   templates.value.WEBHOOK.outputTemplate = JSON.parse(JSON.stringify(preset.outputTemplate))
   templates.value.WEBHOOK.outputXmlTemplate = preset.outputXmlTemplate
+  templates.value.WEBHOOK.responseCheck = JSON.parse(JSON.stringify(preset.responseCheck))
   templates.value.WEBHOOK.transform = JSON.parse(JSON.stringify(preset.transform))
   webhookOutputTplError.value = null
   syncWebhookTextFromTpl()
@@ -434,6 +453,7 @@ async function loadTopic() {
       outputFormat: tt.WEBHOOK?.outputFormat ?? 'JSON',
       outputTemplate: tt.WEBHOOK?.outputTemplate,
       outputXmlTemplate: tt.WEBHOOK?.outputXmlTemplate,
+      responseCheck: tt.WEBHOOK?.responseCheck ?? { enabled: false, bodyType: 'AUTO', successPath: '$.errcode', successValue: '0', messagePath: '$.errmsg', operator: 'EQ' },
       transform: tt.WEBHOOK?.transform ?? { enabled: false, mappings: [] }
     }
   }
@@ -485,7 +505,8 @@ async function saveTemplates() {
     const body = v.body?.trim()
     const hasOutputTpl = v.outputTemplate && Object.keys(v.outputTemplate).length > 0 || !!v.outputXmlTemplate?.trim()
     const transformActive = !!v.transform && (v.transform.enabled || (v.transform.mappings?.length ?? 0) > 0)
-    if (subject || body || hasOutputTpl || transformActive) cleaned[k] = v
+    const responseCheckActive = !!v.responseCheck && (v.responseCheck.enabled || !!v.responseCheck.successPath)
+    if (subject || body || hasOutputTpl || transformActive || responseCheckActive) cleaned[k] = v
   }
   const updated = await patch<Topic>(`/topics/${topic.value!.id}`, { templates: cleaned })
   topic.value = updated
@@ -853,6 +874,45 @@ const SUBSCRIBED_CHANNELS = computed(() => {
                 </el-table-column>
               </el-table>
               <el-button size="small" @click="addMapping" style="margin-top: 8px">+ 添加映射</el-button>
+
+              <h4 class="sub-h">响应断言</h4>
+              <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+                当 HTTP 状态码为 2xx 但响应体字段不符合断言时，本次 Webhook 通知会被视为失败并进入重试队列。
+              </el-alert>
+              <el-form label-width="130px" class="form">
+                <el-form-item label="启用响应断言">
+                  <el-switch v-model="templates.WEBHOOK.responseCheck.enabled" />
+                </el-form-item>
+                <template v-if="templates.WEBHOOK.responseCheck.enabled">
+                  <el-form-item label="响应格式">
+                    <el-radio-group v-model="templates.WEBHOOK.responseCheck.bodyType">
+                      <el-radio-button :value="'AUTO'">自动识别</el-radio-button>
+                      <el-radio-button :value="'JSON'">JSON</el-radio-button>
+                      <el-radio-button :value="'XML'">XML</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item label="成功字段路径">
+                    <el-input v-model="templates.WEBHOOK.responseCheck.successPath" placeholder="JSON: $.errcode / XML: /xml/errcode" />
+                  </el-form-item>
+                  <el-form-item label="判断方式">
+                    <el-select v-model="templates.WEBHOOK.responseCheck.operator" style="width: 180px">
+                      <el-option label="等于" value="EQ" />
+                      <el-option label="不等于" value="NE" />
+                      <el-option label="包含" value="CONTAINS" />
+                      <el-option label="正则匹配" value="REGEX" />
+                      <el-option label="大于" value="GT" />
+                      <el-option label="小于" value="LT" />
+                      <el-option label="存在" value="EXISTS" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item v-if="templates.WEBHOOK.responseCheck.operator !== 'EXISTS'" label="期望值">
+                    <el-input v-model="templates.WEBHOOK.responseCheck.successValue" placeholder="例如 0" />
+                  </el-form-item>
+                  <el-form-item label="失败提示路径">
+                    <el-input v-model="templates.WEBHOOK.responseCheck.messagePath" placeholder="JSON: $.errmsg / XML: /xml/errmsg" />
+                  </el-form-item>
+                </template>
+              </el-form>
             </template>
           </el-tab-pane>
         </el-tabs>

@@ -14,33 +14,35 @@ import io.litealert.topic.domain.Topic;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.w3c.dom.*;
 
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Template-based transform for the WEBHOOK channel.
  *
- * <p>User provides a full JSON "output template" (e.g.
+ * <p>Supports both JSON and XML output templates.
+ *
+ * <p>For JSON: User provides a full JSON "output template" (e.g.
  * {@code {"title": "订单 {{orderId}}", "level": "{{level}}"}}). Each row in
  * the mapping table says "take this JSONPath from the inbound payload and
  * write it into this template field" (via dotted target path).
  *
- * <p>Rendering order:
- * <ol>
- *   <li>Resolve variables in every string leaf:
- *       system vars, dynamic vars ({{uuid}}, {{timestamp}}, {{date}}, etc.),
- *       inline JSONPath ({{$.user.name}}), and function sections
- *       ({{#md5}}$.id + $.ts{{/md5}}, {{#upper}}$.name{{/upper}}, …)</li>
- *   <li>Apply mapping rows — overwrite template fields with values from the
- *       inbound payload.</li>
- * </ol>
- *
- * <p>Step 2 intentionally overwrites step 1 — if a mapping targets a field
- * that also contained a system variable, the payload value wins.
+ * <p>For XML: User provides an XML template string. Placeholders use the same
+ * {{var}} syntax. Mapping rows create XML elements or replace {{to}} placeholders.
  */
 @Slf4j
 @Component
@@ -59,22 +61,12 @@ public class WebhookTemplateEngine {
             .build();
 
     /**
-     * Renders the webhook template against a payload and system variables.
-     *
-     * @param template the user-provided outbound JSON (may contain {{var}} leaves)
-     * @param payload  the validated inbound JSON
-     * @param mappings field-mapping rows (from/to/type/…)
-     * @param system   system variables (namespace, topic, traceId, receivedAt, rawJson)
-     * @return the final JSON to POST to the webhook URL
+     * Renders a JSON webhook template against a payload and system variables.
      */
     public JsonNode render(JsonNode template, JsonNode payload,
                            List<Topic.Transform.Mapping> mappings,
                            Map<String, String> system) {
-        if (template == null) {
-            // no template → forward payload as-is
-            return payload;
-        }
-        // Deep-copy so we don't mutate the stored template.
+        if (template == null) return payload;
         JsonNode out = template.deepCopy();
 
         // Phase 1: resolve variables + functions in every string leaf.
@@ -88,9 +80,7 @@ public class WebhookTemplateEngine {
                 try {
                     raw = JsonPath.using(jsonPathConfig).parse(payload).read(m.getFrom());
                 } catch (PathNotFoundException e) {
-                    if (m.isRequired()) {
-                        log.debug("webhook transform: required path {} not found", m.getFrom());
-                    }
+                    if (m.isRequired()) log.debug("webhook transform: required path {} not found", m.getFrom());
                     continue;
                 }
                 JsonNode value = raw instanceof JsonNode n ? n : objectMapper.valueToTree(raw);
@@ -105,70 +95,211 @@ public class WebhookTemplateEngine {
                 writeByPath((ObjectNode) out, m.getTo(), coerced);
             }
         }
-
         return out;
     }
 
+    /**
+     * Renders an XML webhook template against a payload and system variables.
+     *
+     * Rendering order:
+     * 1. Resolve {{$.path}} and {{var}} placeholders in text nodes.
+     *    JSONPath on objects/arrays converts to XML node fragments.
+     * 2. Apply mapping rows — replace {{to}} placeholders or create XML elements.
+     */
     public String renderXml(String template, JsonNode payload,
                            List<Topic.Transform.Mapping> mappings,
                            Map<String, String> system) {
         if (template == null || template.isBlank()) return "";
-        String text = TemplateFunctions.applyFunctions(template,
-                expr -> resolveXmlSingle(expr, system, payload));
-        Matcher m = VAR.matcher(text);
-        StringBuilder sb = new StringBuilder();
-        int pos = 0;
-        while (m.find()) {
-            sb.append(text, pos, m.start());
-            sb.append(resolveXmlSingle(m.group(1), system, payload));
-            pos = m.end();
-        }
-        sb.append(text.substring(pos));
-        text = sb.toString();
+        try {
+            String wrapped = "<__wr__>" + template + "</__wr__>";
+            Document doc = parseXml(wrapped);
 
-        // Apply mapping rows: overwrite placeholder positions with payload values.
-        if (mappings != null) {
-            for (Topic.Transform.Mapping mapping : mappings) {
-                if (mapping.getFrom() == null || mapping.getTo() == null || mapping.getTo().isBlank()) continue;
-                Object raw;
-                try {
-                    raw = JsonPath.using(jsonPathConfig).parse(payload).read(mapping.getFrom());
-                } catch (PathNotFoundException e) {
-                    if (mapping.isRequired()) {
-                        log.debug("webhook xml transform: required path {} not found", mapping.getFrom());
+            // Phase 1: resolve variables in text nodes.
+            resolveXmlTextNodes(doc.getDocumentElement(), system, payload);
+
+            // Phase 2: apply mapping rows.
+            if (mappings != null) {
+                for (Topic.Transform.Mapping m : mappings) {
+                    applyXmlMapping(doc.getDocumentElement(), m, payload);
+                }
+            }
+
+            String xml = serializeXml(doc);
+            int start = xml.indexOf('>');
+            int end = xml.lastIndexOf("</__wr__>");
+            if (start >= 0 && end > start) {
+                return xml.substring(start + 1, end).trim();
+            }
+            return xml.trim();
+        } catch (Exception e) {
+            log.error("xml template render failed: {}", e.getMessage());
+            return "<error>" + escapeXml(e.getMessage()) + "</error>";
+        }
+    }
+
+    private Document parseXml(String xml) throws Exception {
+        DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
+        f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        DocumentBuilder b = f.newDocumentBuilder();
+        return b.parse(new java.io.ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String serializeXml(Document doc) throws Exception {
+        Transformer t = TransformerFactory.newInstance().newTransformer();
+        t.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+        t.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+        java.io.StringWriter sw = new java.io.StringWriter();
+        t.transform(new DOMSource(doc), new StreamResult(sw));
+        return sw.toString();
+    }
+
+    private void resolveXmlTextNodes(Node node, Map<String, String> system, JsonNode payload) {
+        if (node.getNodeType() == Node.TEXT_NODE) {
+            String text = node.getTextContent();
+            text = TemplateFunctions.applyFunctions(text,
+                    expr -> resolveXmlSingleRaw(expr, system, payload));
+            Matcher m = VAR.matcher(text);
+            if (m.find()) {
+                m.reset();
+                StringBuilder sb = new StringBuilder();
+                int pos = 0;
+                while (m.find()) {
+                    sb.append(text, pos, m.start());
+                    String varName = m.group(1);
+                    String resolved = resolveXmlSingleRaw(varName, system, payload);
+                    if (resolved.startsWith("<") && resolved.contains("</")) {
+                        Node parent = node.getParentNode();
+                        if (sb.length() > 0) {
+                            parent.insertBefore(node.getOwnerDocument().createTextNode(sb.toString()), node);
+                        }
+                        String frag = "<__f__>" + resolved + "</__f__>";
+                        try {
+                            Document fragDoc = parseXml(frag);
+                            NodeList children = fragDoc.getDocumentElement().getChildNodes();
+                            for (int i = 0; i < children.getLength(); i++) {
+                                Node imported = node.getOwnerDocument().importNode(children.item(i), true);
+                                parent.insertBefore(imported, node);
+                            }
+                        } catch (Exception e) {
+                            parent.insertBefore(node.getOwnerDocument().createTextNode(resolved), node);
+                        }
+                        node.setTextContent("");
+                        return;
+                    } else {
+                        sb.append(resolved);
                     }
-                    continue;
+                    pos = m.end();
                 }
-                String value;
-                if (raw instanceof JsonNode n && n.isValueNode()) {
-                    value = escapeXml(n.asText());
-                } else if (raw != null) {
-                    value = escapeXml(String.valueOf(raw));
-                } else if (mapping.getDefaultValue() != null) {
-                    value = escapeXml(String.valueOf(mapping.getDefaultValue()));
+                sb.append(text.substring(pos));
+                node.setTextContent(sb.toString());
+            }
+        } else if (node.getNodeType() == Node.ELEMENT_NODE) {
+            List<Node> snapshot = new ArrayList<>();
+            NodeList children = node.getChildNodes();
+            for (int i = 0; i < children.getLength(); i++) snapshot.add(children.item(i));
+            for (Node child : snapshot) resolveXmlTextNodes(child, system, payload);
+        }
+    }
+
+    private void applyXmlMapping(Element root, Topic.Transform.Mapping m, JsonNode payload) {
+        if (m.getFrom() == null || m.getTo() == null || m.getTo().isBlank()) return;
+        Object raw;
+        try {
+            raw = JsonPath.using(jsonPathConfig).parse(payload).read(m.getFrom());
+        } catch (PathNotFoundException e) {
+            if (m.isRequired()) log.debug("webhook xml transform: required path {} not found", m.getFrom());
+            return;
+        }
+        String value;
+        if (raw instanceof JsonNode n && n.isValueNode()) {
+            value = n.asText();
+        } else if (raw != null) {
+            value = String.valueOf(raw);
+        } else if (m.getDefaultValue() != null) {
+            value = String.valueOf(m.getDefaultValue());
+        } else {
+            return;
+        }
+        String escapedValue = escapeXml(value);
+        String placeholder = "{{" + m.getTo() + "}}";
+
+        // First: try replacing existing {{to}} placeholder in the whole tree.
+        if (replacePlaceholderInText(root, placeholder, escapedValue)) return;
+
+        // Second: create the dotted path as XML elements under root.
+        String[] parts = m.getTo().split("\\.");
+        Element cur = root;
+        for (int i = 0; i < parts.length; i++) {
+            String seg = sanitizeXmlName(parts[i]);
+            boolean last = i == parts.length - 1;
+            Element existing = findFirstChild(cur, seg);
+            if (last) {
+                if (existing == null) {
+                    Element el = cur.getOwnerDocument().createElement(seg);
+                    el.setTextContent(value);
+                    cur.appendChild(el);
                 } else {
-                    continue;
+                    existing.setTextContent(value);
                 }
-                // Replace any {{to}} placeholder in the rendered XML.
-                text = text.replace("{{" + mapping.getTo() + "}}", value);
+            } else {
+                if (existing == null) {
+                    Element el = cur.getOwnerDocument().createElement(seg);
+                    cur.appendChild(el);
+                    cur = el;
+                } else {
+                    cur = existing;
+                }
             }
         }
+    }
 
-        return text;
+    private boolean replacePlaceholderInText(Node node, String placeholder, String value) {
+        if (node.getNodeType() == Node.TEXT_NODE) {
+            String text = node.getTextContent();
+            if (text.contains(placeholder)) {
+                node.setTextContent(text.replace(placeholder, value));
+                return true;
+            }
+            return false;
+        }
+        NodeList children = node.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            if (replacePlaceholderInText(children.item(i), placeholder, value)) return true;
+        }
+        return false;
+    }
+
+    private Element findFirstChild(Element parent, String name) {
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node c = children.item(i);
+            if (c.getNodeType() == Node.ELEMENT_NODE && name.equals(c.getNodeName())) {
+                return (Element) c;
+            }
+        }
+        return null;
     }
 
     private String resolveXmlSingle(String name, Map<String, String> system, JsonNode payload) {
+        return resolveXmlSingleRaw(name, system, payload);
+    }
+
+    /**
+     * Resolve a single placeholder. Returns XML-safe text (unescaped) or XML fragments.
+     * The DOM serializer handles escaping for text nodes.
+     */
+    private String resolveXmlSingleRaw(String name, Map<String, String> system, JsonNode payload) {
         String dynamic = TemplateFunctions.resolveDynamicVar(name);
-        if (dynamic != null) return escapeXml(dynamic);
+        if (dynamic != null) return dynamic;
         if (name.startsWith("$")) {
             JsonNode node = evaluateJsonPathNode(name, payload);
             if (node == null || node.isNull()) return "";
-            if (node.isValueNode()) return escapeXml(node.asText());
+            if (node.isValueNode()) return node.asText();
             if (node.isArray()) return xmlArray(node);
             return xmlElement(xmlNameFromPath(name), node);
         }
         String v = system.get(name);
-        if (v != null) return escapeXml(v);
+        if (v != null) return v;
         return "{{" + name + "}}";
     }
 
@@ -208,7 +339,7 @@ public class WebhookTemplateEngine {
 
     private String sanitizeXmlName(String raw) {
         String s = raw.replaceAll("[^A-Za-z0-9_.-]", "_");
-        if (s.isBlank() || !Character.isLetter(s.charAt(0)) && s.charAt(0) != '_') s = "n_" + s;
+        if (s.isBlank() || (!Character.isLetter(s.charAt(0)) && s.charAt(0) != '_')) s = "n_" + s;
         return s;
     }
 
@@ -234,10 +365,8 @@ public class WebhookTemplateEngine {
         if (node == null || node.isNull()) return node;
         if (node.isTextual()) {
             String text = node.textValue();
-            // First: resolve function sections ({{#md5}}…{{/md5}}, etc.)
             text = TemplateFunctions.applyFunctions(text,
                     expr -> resolveSingle(expr, system, payload));
-            // Then: resolve remaining {{var}} references.
             Matcher m = VAR.matcher(text);
             if (m.find()) {
                 m.reset();
@@ -270,19 +399,13 @@ public class WebhookTemplateEngine {
     }
 
     private String resolveSingle(String name, Map<String, String> system, JsonNode payload) {
-        // Dynamic runtime variables.
         String dynamic = TemplateFunctions.resolveDynamicVar(name);
         if (dynamic != null) return dynamic;
-        // Inline JSONPath: {{$.user.name}}
         if (name.startsWith("$")) {
             return evaluateJsonPath(name, payload);
         }
-        // Pass-through system variable only — payload fields must use {{$.path}}.
-        // This avoids collisions (e.g. a payload field named "traceId" overriding
-        // the real traceId).
         String v = system.get(name);
         if (v != null) return v;
-        // Unresolved — leave the placeholder so the user can spot it.
         return "{{" + name + "}}";
     }
 
@@ -330,9 +453,7 @@ public class WebhookTemplateEngine {
     }
 
     /**
-     * Writes {@code value} into {@code root} at a dotted target path,
-     * e.g. {@code "user.name"} → {@code root.user.name}.
-     * Intermediate nodes are created as needed.
+     * Writes {@code value} into {@code root} at a dotted target path.
      */
     private void writeByPath(ObjectNode root, String dottedPath, JsonNode value) {
         if (dottedPath == null || dottedPath.isBlank()) return;

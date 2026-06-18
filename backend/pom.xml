@@ -166,8 +166,9 @@
                 * Active by default. `mvn package` ships a JAR with the SPA inside.
                 * Skip with `-Dskip.frontend=true` for backend-only iteration.
                 * Node toolchain is downloaded into `target/` so `mvn clean` wipes it.
-                * Vite writes straight to `src/main/resources/static/dist`
-                  (configured in frontend/vite.config.mjs), so no copy step is needed.
+                * Vite writes bundles into `target/frontend-static`, then
+                  maven-resources-plugin copies them into `target/classes/static`
+                  before the Spring Boot JAR is packaged.
             -->
             <plugin>
                 <groupId>com.github.eirslett</groupId>
@@ -202,6 +203,29 @@
                         <phase>prepare-package</phase>
                         <configuration>
                             <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-frontend-static</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <overwrite>true</overwrite>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.build.directory}/frontend-static</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
                         </configuration>
                     </execution>
                 </executions>

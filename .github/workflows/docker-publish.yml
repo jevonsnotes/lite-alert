@@ -64,12 +64,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Sync README to Docker Hub
-        if: success()
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ env.DOCKER_HUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKER_IMAGE }}
-          readme-filepath: ./docs/docker/README.md

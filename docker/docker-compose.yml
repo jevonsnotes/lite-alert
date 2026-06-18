@@ -1,11 +1,10 @@
 # =============================================================================
 # Lite-Alert — docker-compose.yml
 #
-# All-in-one compose with H2, MySQL and PostgreSQL profiles.
-# Usage:
-#   H2 (default):   docker compose up -d
-#   MySQL:          docker compose --profile mysql up -d
-#   PostgreSQL:     docker compose --profile postgres up -d
+# Database selection via COMPOSE_PROFILES env var (set in .env file):
+#   H2 (default):     COMPOSE_PROFILES=""       (or omit the line)
+#   MySQL:            COMPOSE_PROFILES=mysql
+#   PostgreSQL:       COMPOSE_PROFILES=postgres
 #
 # Required env vars (set in .env):
 #   JASYPT_ENCRYPTOR_PASSWORD  — Jasypt encryption key
@@ -15,13 +14,16 @@
 
 version: "3.9"
 
+# COMPOSE_PROFILES reads from env var or .env file, no CLI --profile needed.
+# See comment block at top of this file for usage.
+
 services:
   # ==========================================================================
   #  Main application — always present
   # ==========================================================================
   lite-alert:
     # Docker Hub pull mode: set IMAGE env var (e.g. IMAGE=jevonsnotes/lite-alert:1.0.0)
-    image: ${IMAGE:-lite-alert:${VERSION:-latest}}
+    image: ${IMAGE:-jevonsnotes/lite-alert:${VERSION:-latest}}
     # Local build mode: comment out `image:` above and uncomment the `build:` block
     # build:
     #   context: ..

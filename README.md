@@ -77,16 +77,76 @@ java -jar backend/target/lite-alert.jar
 
 访问 http://localhost:8080 即是完整应用。
 
-### Docker
+### Docker Compose 部署
+
+#### 1. 准备环境
 
 ```bash
 cd docker
 cp .env.example .env
-# 编辑 .env，至少替换 JASYPT_ENCRYPTOR_PASSWORD / LITE_ALERT_JWT_SECRET / LITE_ALERT_APIKEY_PEPPER
-docker compose up -d --build
 ```
 
-数据持久化到 `docker/data/`。
+编辑 `.env`，至少填写三个必填密钥：
+
+```ini
+JASYPT_ENCRYPTOR_PASSWORD=<your-32-char-min-secret>
+LITE_ALERT_JWT_SECRET=<your-32-char-min-secret>
+LITE_ALERT_APIKEY_PEPPER=<your-32-char-min-secret>
+```
+
+#### 2. 选择数据库模式
+
+数据库切换通过 `.env` 中的 `COMPOSE_PROFILES` 变量控制，无需额外命令行参数。
+
+| 模式 | 配置 | 说明 |
+|------|------|------|
+| **H2**（默认） | 无需修改 | 开箱即用，数据在 `./data` |
+| **MySQL** | `COMPOSE_PROFILES=mysql` + 取消注释 MySQL 配置段 | 自动拉起 MySQL 8.0 容器 |
+| **PostgreSQL** | `COMPOSE_PROFILES=postgres` + 取消注释 PostgreSQL 配置段 | 自动拉起 PostgreSQL 16 容器 |
+| **外部数据库** | 留空 `COMPOSE_PROFILES` + 配置外部 JDBC URL | 适用于 GaussDB / OceanBase / 自建库 |
+
+MySQL 示例（`.env`）：
+
+```ini
+COMPOSE_PROFILES=mysql
+LITE_ALERT_DATASOURCE_URL=jdbc:mysql://mysql:3306/lite_alert?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
+LITE_ALERT_DATASOURCE_USERNAME=root
+LITE_ALERT_DATASOURCE_PASSWORD=litealert
+LITE_ALERT_DATASOURCE_DRIVER=com.mysql.cj.jdbc.Driver
+LITE_ALERT_DATABASE_TYPE=mysql
+MYSQL_ROOT_PASSWORD=litealert
+```
+
+#### 3. 启动
+
+```bash
+docker compose up -d
+```
+
+Compose 会根据 `COMPOSE_PROFILES` 自动决定是否拉起 MySQL/PostgreSQL 容器。
+
+#### 4. 验证与访问
+
+```bash
+docker compose ps
+docker compose logs -f lite-alert
+curl http://localhost:8080/api/health
+```
+
+浏览器打开 `http://localhost:8080`，初始管理员账号 `admin` / `admin123`。
+
+#### 5. 版本升级
+
+使用 Docker Hub 镜像升级，在 `.env` 中指定版本：
+
+```ini
+IMAGE=jevonsnotes/lite-alert:1.0.0
+```
+
+```bash
+docker compose down
+docker compose up -d
+```
 
 ## 默认账号
 
@@ -96,7 +156,7 @@ docker compose up -d --build
 | --- | --- |
 | `admin` | `admin123`（dev profile 默认；生产部署请通过 ENC(...) 覆盖） |
 
-> 初始化逻辑会在 M1 落地；M0 阶段后端只暴露 `/api/health`。
+> 首次登录后请及时修改管理员密码。
 
 ## 配置项
 
@@ -109,20 +169,6 @@ docker compose up -d --build
 | `LITE_ALERT_APIKEY_PEPPER` | 生产必填 | ApiKey HMAC pepper，**一旦设定不可轮换** |
 | `LITE_ALERT_DATA_DIR` | 否 | 数据目录，默认 `./data`（容器内 `/data`） |
 | `SPRING_PROFILES_ACTIVE` | 否 | 默认 `dev`，生产建议 `prod` |
-
-## 状态
-
-当前里程碑：**M0 脚手架完成**。后续按 [`docs/design/10-roadmap.md`](./docs/design/10-roadmap.md) 推进：
-
-- [x] M0 工程脚手架
-- [ ] M1 认证骨架
-- [ ] M2 文件存储基座
-- [ ] M3 命名空间 + Topic
-- [ ] M3.5 ApiKey 模块
-- [ ] M4 报文格式 + 转换
-- [ ] M5 邮箱 + 通知派发
-- [ ] M6 Webhook 接入正式版
-- [ ] M7 部署与运维
 
 ## 许可
 
