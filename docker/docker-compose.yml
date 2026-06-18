@@ -15,10 +15,6 @@
 
 version: "3.9"
 
-# When IMAGE is set (e.g. jevonsnotes/lite-alert:1.0.0), the service pulls
-# from Docker Hub instead of building locally. IMAGE takes precedence over build.
-x-image: &image ${IMAGE:-}
-
 services:
   # ==========================================================================
   #  Main application — always present
