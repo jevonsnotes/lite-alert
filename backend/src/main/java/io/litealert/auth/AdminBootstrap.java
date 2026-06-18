@@ -9,8 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.crypto.bcrypt.BCrypt;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.DigestUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 /**
@@ -28,8 +31,10 @@ public class AdminBootstrap {
 
     private final LiteAlertProperties props;
     private final UserStore userStore;
+    private final PasswordEncoder passwordEncoder;
 
     @Bean
+    @Order(100)
     public ApplicationRunner adminBootstrapRunner() {
         return args -> {
             if (userStore.hasAnyAdmin()) {
@@ -37,12 +42,8 @@ public class AdminBootstrap {
                 return;
             }
             String username = props.getBootstrap().getAdmin().getUsername();
-            String hash = props.getBootstrap().getAdmin().getPassword();
-            if (!hash.startsWith("$2")) {
-                log.warn("bootstrap admin password does not look like a bcrypt hash; "
-                        + "treating it as a raw password and hashing it now (dev only).");
-                hash = BCrypt.hashpw(hash, BCrypt.gensalt(10));
-            }
+            String password = props.getBootstrap().getAdmin().getPassword();
+            String hash = passwordEncoder.encode(md5(password));
             User admin = User.builder()
                     .id(IdGenerator.userId())
                     .username(username)
@@ -55,5 +56,11 @@ public class AdminBootstrap {
             userStore.save(admin);
             log.info("bootstrapped admin user '{}'", username);
         };
+    }
+
+    private String md5(String raw) {
+        return raw != null && raw.matches("^[a-fA-F0-9]{32}$")
+                ? raw.toLowerCase()
+                : DigestUtils.md5DigestAsHex(String.valueOf(raw).getBytes(StandardCharsets.UTF_8));
     }
 }

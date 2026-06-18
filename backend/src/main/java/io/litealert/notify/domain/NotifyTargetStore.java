@@ -1,83 +1,62 @@
 package io.litealert.notify.domain;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import io.litealert.common.storage.FileStore;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Per-user notify target store. Same on-disk layout as the previous
- * EmailContactStore ({@code contacts/{userId}.json}) — reuses the file so
- * existing data migrates transparently. Records that lack a {@code type}
- * are interpreted as legacy EMAIL contacts.
- */
 @Component
 @RequiredArgsConstructor
 public class NotifyTargetStore {
 
-    private final FileStore fileStore;
-
-    private final Map<String, List<NotifyTarget>> byUser = new ConcurrentHashMap<>();
-    private final Map<String, NotifyTarget> byId = new ConcurrentHashMap<>();
-
-    private List<NotifyTarget> loadFor(String userId) {
-        return byUser.computeIfAbsent(userId, u -> {
-            List<NotifyTarget> shard = fileStore.readJson(
-                    "contacts/" + u + ".json",
-                    new TypeReference<List<NotifyTarget>>() {}, new ArrayList<>());
-            // backfill type for legacy records
-            for (NotifyTarget t : shard) {
-                if (t.getType() == null) t.setType(NotifyTarget.Type.EMAIL);
-                byId.put(t.getId(), t);
-            }
-            return new ArrayList<>(shard);
-        });
-    }
+    private final JdbcTemplate jdbc;
 
     public List<NotifyTarget> findByUser(String userId) {
-        return new ArrayList<>(loadFor(userId));
+        return jdbc.query("select * from la_notify_target where user_id = ? order by created_at desc, label asc", this::map, userId);
     }
 
     public Optional<NotifyTarget> findById(String id) {
-        // Make sure shard is loaded — id index populates lazily through loadFor.
-        if (!byId.containsKey(id)) {
-            for (List<NotifyTarget> shard : byUser.values()) {
-                for (NotifyTarget t : shard) byId.putIfAbsent(t.getId(), t);
-            }
-        }
-        return Optional.ofNullable(byId.get(id));
+        return jdbc.query("select * from la_notify_target where id = ?", this::map, id).stream().findFirst();
     }
 
     public synchronized NotifyTarget save(NotifyTarget t) {
-        List<NotifyTarget> shard = loadFor(t.getUserId());
-        shard.removeIf(x -> x.getId().equals(t.getId()));
-        shard.add(t);
-        byUser.put(t.getUserId(), shard);
-        byId.put(t.getId(), t);
-        flush(t.getUserId());
+        boolean exists = findById(t.getId()).isPresent();
+        if (exists) {
+            jdbc.update("update la_notify_target set user_id=?, label=?, type=?, endpoint=?, secret=?, enabled=?, created_at=? where id=?",
+                    t.getUserId(), t.getLabel(), typeName(t), t.getEndpoint(), t.getSecret(), t.isEnabled(), ts(t.getCreatedAt()), t.getId());
+        } else {
+            jdbc.update("insert into la_notify_target(id, user_id, label, type, endpoint, secret, enabled, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+                    t.getId(), t.getUserId(), t.getLabel(), typeName(t), t.getEndpoint(), t.getSecret(), t.isEnabled(), ts(t.getCreatedAt()));
+        }
         return t;
     }
 
     public synchronized void delete(String id) {
-        NotifyTarget t = byId.remove(id);
-        if (t == null) return;
-        List<NotifyTarget> shard = byUser.get(t.getUserId());
-        if (shard != null) shard.removeIf(x -> x.getId().equals(id));
-        flush(t.getUserId());
+        jdbc.update("delete from la_notify_target where id = ?", id);
     }
 
-    private void flush(String userId) {
-        List<NotifyTarget> shard = byUser.get(userId);
-        if (shard == null || shard.isEmpty()) {
-            fileStore.delete("contacts/" + userId + ".json");
-        } else {
-            fileStore.writeJson("contacts/" + userId + ".json", shard);
-        }
+    private String typeName(NotifyTarget t) {
+        return (t.getType() == null ? NotifyTarget.Type.EMAIL : t.getType()).name();
     }
+
+    private NotifyTarget map(ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return NotifyTarget.builder()
+                .id(rs.getString("id"))
+                .userId(rs.getString("user_id"))
+                .label(rs.getString("label"))
+                .type(NotifyTarget.Type.valueOf(rs.getString("type")))
+                .endpoint(rs.getString("endpoint"))
+                .secret(rs.getString("secret"))
+                .enabled(rs.getBoolean("enabled"))
+                .createdAt(instant(rs.getTimestamp("created_at")))
+                .build();
+    }
+
+    private Timestamp ts(Instant instant) { return instant == null ? null : Timestamp.from(instant); }
+    private Instant instant(Timestamp ts) { return ts == null ? null : ts.toInstant(); }
 }

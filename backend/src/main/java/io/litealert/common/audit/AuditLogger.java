@@ -1,100 +1,54 @@
 package io.litealert.common.audit;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import io.litealert.common.config.LiteAlertProperties;
+import io.litealert.common.db.DbJson;
 import io.litealert.common.web.TraceIdHolder;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Append-only JSON-lines audit log. One event per line, files rolled DAILY
- * under {@code <dataDir>/audit/yyyy-MM-dd.log}.
- *
- * <p>The shared {@code storeObjectMapper} pretty-prints for human-readable
- * entity files, but JSON-lines requires single-line records — we override
- * that with a dedicated writer.
- *
- * <p>Best-effort: a failed audit write must never abort the business flow,
- * so all IO errors are logged and swallowed.
- */
+/** Best-effort append-only audit logger backed by {@code la_audit_log}. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AuditLogger {
 
-    /** Pattern AuditController and the janitor both expect; check before changing. */
+    /** Kept for older helper code/tests that still format audit dates. */
     public static final DateTimeFormatter FILE_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    private final LiteAlertProperties props;
+    private final JdbcTemplate jdbc;
+    private final DbJson json;
 
-    @Qualifier("storeObjectMapper")
-    private final ObjectMapper mapper;
-
-    private Path dir;
-    private ObjectWriter writer;
-
-    @PostConstruct
-    void init() throws IOException {
-        this.dir = Path.of(props.getDataDir(), "audit").toAbsolutePath().normalize();
-        Files.createDirectories(dir);
-        this.writer = mapper.writer().without(SerializationFeature.INDENT_OUTPUT);
-    }
-
-    public Path dir() { return dir; }
-
-    /** Resolves the daily file for an arbitrary local date. Public so the
-     *  query side can build a list of file paths to read for a date range. */
-    public Path fileFor(LocalDate date) {
-        return dir.resolve(date.format(FILE_DATE) + ".log");
-    }
+    /** Legacy no-op path helpers retained until all old file tooling is removed. */
+    public Path dir() { return Path.of("audit"); }
+    public Path fileFor(LocalDate date) { return dir().resolve(date.format(FILE_DATE) + ".log"); }
 
     public void log(String type, Map<String, Object> attrs) {
         try {
-            Map<String, Object> line = new LinkedHashMap<>();
+            Map<String, Object> clean = new LinkedHashMap<>();
+            String actor = null;
             if (attrs != null) {
                 for (var e : attrs.entrySet()) {
                     String k = e.getKey();
                     if ("ts".equals(k) || "type".equals(k) || "traceId".equals(k)) continue;
-                    line.put(k, e.getValue());
+                    if ("actor".equals(k) && e.getValue() != null) actor = String.valueOf(e.getValue());
+                    clean.put(k, e.getValue());
                 }
             }
-            line.put("ts", Instant.now().toString());
-            line.put("type", type);
-            String trace = TraceIdHolder.current();
-            if (trace != null) line.put("traceId", trace);
-
-            Path file = fileFor(LocalDate.now(ZoneId.systemDefault()));
-            String json;
-            try {
-                json = writer.writeValueAsString(line);
-            } catch (JsonProcessingException e) {
-                log.warn("audit serialize failed: type={}", type, e);
-                return;
-            }
-            byte[] bytes = (json + "\n").getBytes(StandardCharsets.UTF_8);
-            synchronized (this) {
-                Files.write(file, bytes,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.APPEND);
-            }
+            jdbc.update("insert into la_audit_log(ts, type, actor, trace_id, attrs_json) values (?, ?, ?, ?, ?)",
+                    Timestamp.from(Instant.now()),
+                    type,
+                    actor,
+                    TraceIdHolder.current(),
+                    json.write(clean));
         } catch (Exception e) {
             log.warn("audit write failed: type={}", type, e);
         }

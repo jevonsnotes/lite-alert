@@ -2,18 +2,16 @@ package io.litealert.admin.web;
 
 import io.litealert.auth.domain.User;
 import io.litealert.common.audit.AuditLogger;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.TestPropertySource;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,11 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @TestPropertySource(properties = {
-        "lite-alert.data-dir=${java.io.tmpdir}/lite-alert-stats-test",
+        "lite-alert.database.type=h2",
+        "spring.datasource.url=jdbc:h2:mem:stats_test;MODE=MySQL;DB_CLOSE_DELAY=-1",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=",
         "lite-alert.jwt.secret=01234567890123456789012345678901",
         "lite-alert.apikey.pepper=01234567890123456789012345678901",
         "lite-alert.bootstrap.admin.username=admin",
-        "lite-alert.bootstrap.admin.password=$2a$10$abcdefghijklmnopqrstuu"
+        "lite-alert.bootstrap.admin.password=admin123"
 })
 class StatsControllerTest {
 
@@ -35,20 +36,22 @@ class StatsControllerTest {
     @Autowired
     private AuditLogger auditLogger;
 
-    @Test
-    void dailyFiltersAcceptedByTopicAndApiKey() throws Exception {
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @BeforeEach
+    void setUp() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin", "n/a", io.litealert.auth.CurrentUser.authoritiesFor(User.Role.ADMIN)));
+        jdbc.update("delete from la_audit_log");
+    }
 
-        LocalDate today = LocalDate.now();
-        Path file = auditLogger.fileFor(today);
-        Files.createDirectories(file.getParent());
-        Files.write(file, List.of(
-                line("webhook.accepted", "t_1", "ak_1"),
-                line("webhook.accepted", "t_1", "ak_2"),
-                line("webhook.accepted", "t_2", "ak_1"),
-                line("webhook.accepted", "t_public", null)
-        ), StandardCharsets.UTF_8);
+    @Test
+    void dailyFiltersAcceptedByTopicAndApiKey() {
+        log("webhook.accepted", "t_1", "ak_1");
+        log("webhook.accepted", "t_1", "ak_2");
+        log("webhook.accepted", "t_2", "ak_1");
+        log("webhook.accepted", "t_public", null);
 
         Map<String, Object> byTopic = controller.daily(1, "DAYS", "TOPIC", "t_1", null);
         Map<String, Object> byKey = controller.daily(1, "DAYS", "APIKEY", null, "ak_1");
@@ -60,19 +63,11 @@ class StatsControllerTest {
     }
 
     @Test
-    void rankingReturnsTopTopicsAndApiKeysByAcceptedCount() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("admin", "n/a", io.litealert.auth.CurrentUser.authoritiesFor(User.Role.ADMIN)));
-
-        LocalDate today = LocalDate.now();
-        Path file = auditLogger.fileFor(today);
-        Files.createDirectories(file.getParent());
-        Files.write(file, List.of(
-                line("webhook.accepted", "t_1", "ak_1"),
-                line("webhook.accepted", "t_1", "ak_1"),
-                line("webhook.accepted", "t_2", "ak_2"),
-                line("webhook.accepted", "t_public", null)
-        ), StandardCharsets.UTF_8);
+    void rankingReturnsTopTopicsAndApiKeysByAcceptedCount() {
+        log("webhook.accepted", "t_1", "ak_1");
+        log("webhook.accepted", "t_1", "ak_1");
+        log("webhook.accepted", "t_2", "ak_2");
+        log("webhook.accepted", "t_public", null);
 
         Map<String, Object> topics = controller.ranking(1, "DAYS", "TOPIC", 10);
         Map<String, Object> apiKeys = controller.ranking(1, "DAYS", "APIKEY", 10);
@@ -83,11 +78,10 @@ class StatsControllerTest {
         assertThat((List<Long>) apiKeys.get("accepted")).containsExactly(2L, 1L);
     }
 
-    private String line(String type, String topicId, String apiKeyId) {
-        StringBuilder b = new StringBuilder("{\"ts\":\"")
-                .append(LocalDate.now()).append("T12:00:00Z\",\"type\":\"").append(type).append("\"")
-                .append(",\"topicId\":\"").append(topicId).append("\"");
-        if (apiKeyId != null) b.append(",\"apiKeyId\":\"").append(apiKeyId).append("\"");
-        return b.append("}").toString();
+    private void log(String type, String topicId, String apiKeyId) {
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("topicId", topicId);
+        if (apiKeyId != null) attrs.put("apiKeyId", apiKeyId);
+        auditLogger.log(type, attrs);
     }
 }

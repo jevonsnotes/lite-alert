@@ -109,6 +109,86 @@ public class WebhookTemplateEngine {
         return out;
     }
 
+    public String renderXml(String template, JsonNode payload, Map<String, String> system) {
+        if (template == null || template.isBlank()) return "";
+        String text = TemplateFunctions.applyFunctions(template,
+                expr -> resolveXmlSingle(expr, system, payload));
+        Matcher m = VAR.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        int pos = 0;
+        while (m.find()) {
+            sb.append(text, pos, m.start());
+            sb.append(resolveXmlSingle(m.group(1), system, payload));
+            pos = m.end();
+        }
+        sb.append(text.substring(pos));
+        return sb.toString();
+    }
+
+    private String resolveXmlSingle(String name, Map<String, String> system, JsonNode payload) {
+        String dynamic = TemplateFunctions.resolveDynamicVar(name);
+        if (dynamic != null) return escapeXml(dynamic);
+        if (name.startsWith("$")) {
+            JsonNode node = evaluateJsonPathNode(name, payload);
+            if (node == null || node.isNull()) return "";
+            if (node.isValueNode()) return escapeXml(node.asText());
+            if (node.isArray()) return xmlArray(node);
+            return xmlElement(xmlNameFromPath(name), node);
+        }
+        String v = system.get(name);
+        if (v != null) return escapeXml(v);
+        return "{{" + name + "}}";
+    }
+
+    private JsonNode evaluateJsonPathNode(String path, JsonNode payload) {
+        if (payload == null) return null;
+        try {
+            return JsonPath.using(jsonPathConfig).parse(payload).read(path);
+        } catch (Exception e) {
+            log.debug("webhook xml jsonPath({}) failed: {}", path, e.getMessage());
+            return null;
+        }
+    }
+
+    private String xmlNameFromPath(String path) {
+        String cleaned = path.replaceAll("\\[[^]]*]", "");
+        int dot = cleaned.lastIndexOf('.');
+        String name = dot >= 0 ? cleaned.substring(dot + 1) : cleaned.replace("$", "root");
+        return name.isBlank() || "$".equals(name) ? "root" : sanitizeXmlName(name);
+    }
+
+    private String xmlElement(String name, JsonNode node) {
+        if (node == null || node.isNull()) return "<" + name + "/>";
+        if (node.isValueNode()) return "<" + name + ">" + escapeXml(node.asText()) + "</" + name + ">";
+        if (node.isArray()) return "<" + name + ">" + xmlArray(node) + "</" + name + ">";
+        StringBuilder sb = new StringBuilder();
+        sb.append('<').append(name).append('>');
+        node.fields().forEachRemaining(e -> sb.append(xmlElement(sanitizeXmlName(e.getKey()), e.getValue())));
+        sb.append("</").append(name).append('>');
+        return sb.toString();
+    }
+
+    private String xmlArray(JsonNode arr) {
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode item : arr) sb.append(xmlElement("item", item));
+        return sb.toString();
+    }
+
+    private String sanitizeXmlName(String raw) {
+        String s = raw.replaceAll("[^A-Za-z0-9_.-]", "_");
+        if (s.isBlank() || !Character.isLetter(s.charAt(0)) && s.charAt(0) != '_') s = "n_" + s;
+        return s;
+    }
+
+    private String escapeXml(String raw) {
+        return raw == null ? "" : raw
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
+    }
+
     /**
      * Walks every string leaf of {@code node} and replaces {{var}} references.
      * Supports:

@@ -62,9 +62,14 @@ public class TopicTransformController {
 
         if (type == NotifyTarget.Type.WEBHOOK) {
             // Webhook: full template rendering.
-            JsonNode tpl = ch == null ? null : ch.getOutputTemplate();
             Topic.Transform transform = ch == null ? null : ch.getTransform();
             Map<String, String> sysVars = buildSystemVars(t);
+            if (ch != null && "XML".equalsIgnoreCase(ch.getOutputFormat())) {
+                result.put("outputFormat", "XML");
+                result.put("outputXml", webhookEngine.renderXml(ch.getOutputXmlTemplate(), payload, sysVars));
+                return result;
+            }
+            JsonNode tpl = ch == null ? null : ch.getOutputTemplate();
             JsonNode out;
             if (tpl != null && transform != null && transform.isEnabled()) {
                 out = webhookEngine.render(tpl, payload, transform.getMappings(), sysVars);

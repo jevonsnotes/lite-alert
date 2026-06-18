@@ -1,77 +1,71 @@
 package io.litealert.namespace.domain;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import io.litealert.common.storage.FileStore;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class NamespaceStore {
 
-    public static final String FILE = "namespaces.json";
-
-    private final FileStore fileStore;
-
-    private final Map<String, Namespace> byId = new ConcurrentHashMap<>();
-    private final Map<String, String> idByName = new ConcurrentHashMap<>();
-
-    @PostConstruct
-    void load() {
-        List<Namespace> all = fileStore.readJson(FILE,
-                new TypeReference<List<Namespace>>() {}, new ArrayList<>());
-        for (Namespace n : all) {
-            byId.put(n.getId(), n);
-            idByName.put(n.getName().toLowerCase(), n.getId());
-        }
-        log.info("loaded {} namespaces", byId.size());
-    }
+    private final JdbcTemplate jdbc;
 
     public Optional<Namespace> findById(String id) {
-        return Optional.ofNullable(byId.get(id));
+        return jdbc.query("select * from la_namespace where id = ?", this::map, id).stream().findFirst();
     }
 
     public Optional<Namespace> findByName(String name) {
         if (name == null) return Optional.empty();
-        String id = idByName.get(name.toLowerCase());
-        return id == null ? Optional.empty() : Optional.ofNullable(byId.get(id));
+        return jdbc.query("select * from la_namespace where lower(name) = lower(?)", this::map, name).stream().findFirst();
     }
 
     public List<Namespace> findAll() {
-        return new ArrayList<>(byId.values());
+        return jdbc.query("select * from la_namespace order by created_at desc, name asc", this::map);
     }
 
     public List<Namespace> findByOwner(String ownerId) {
-        return byId.values().stream()
-                .filter(n -> ownerId.equals(n.getOwnerId()))
-                .toList();
+        return jdbc.query("select * from la_namespace where owner_id = ? order by created_at desc, name asc", this::map, ownerId);
     }
 
     public synchronized Namespace save(Namespace n) {
-        byId.put(n.getId(), n);
-        idByName.put(n.getName().toLowerCase(), n.getId());
-        flush();
+        if (n.getStatus() == null) n.setStatus(Namespace.Status.ACTIVE);
+        boolean exists = findById(n.getId()).isPresent();
+        if (exists) {
+            jdbc.update("update la_namespace set name=?, owner_id=?, description=?, status=?, disabled_at=?, disabled_by=?, created_at=?, updated_at=? where id=?",
+                    n.getName(), n.getOwnerId(), n.getDescription(), n.getStatus().name(),
+                    ts(n.getDisabledAt()), n.getDisabledBy(), ts(n.getCreatedAt()), ts(n.getUpdatedAt()), n.getId());
+        } else {
+            jdbc.update("insert into la_namespace(id, name, owner_id, description, status, disabled_at, disabled_by, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    n.getId(), n.getName(), n.getOwnerId(), n.getDescription(), n.getStatus().name(),
+                    ts(n.getDisabledAt()), n.getDisabledBy(), ts(n.getCreatedAt()), ts(n.getUpdatedAt()));
+        }
         return n;
     }
 
     public synchronized void delete(String id) {
-        Namespace removed = byId.remove(id);
-        if (removed != null) {
-            idByName.remove(removed.getName().toLowerCase());
-            flush();
-        }
+        jdbc.update("delete from la_namespace where id = ?", id);
     }
 
-    private void flush() {
-        fileStore.writeJson(FILE, new ArrayList<>(byId.values()));
+    private Namespace map(ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return Namespace.builder()
+                .id(rs.getString("id"))
+                .name(rs.getString("name"))
+                .ownerId(rs.getString("owner_id"))
+                .description(rs.getString("description"))
+                .status(Namespace.Status.valueOf(rs.getString("status")))
+                .disabledAt(instant(rs.getTimestamp("disabled_at")))
+                .disabledBy(rs.getString("disabled_by"))
+                .createdAt(instant(rs.getTimestamp("created_at")))
+                .updatedAt(instant(rs.getTimestamp("updated_at")))
+                .build();
     }
+
+    private Timestamp ts(Instant instant) { return instant == null ? null : Timestamp.from(instant); }
+    private Instant instant(Timestamp ts) { return ts == null ? null : ts.toInstant(); }
 }

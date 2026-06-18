@@ -8,6 +8,14 @@ spring:
     serialization:
       indent-output: false
       write-dates-as-timestamps: false
+  datasource:
+    url: ${LITE_ALERT_DATASOURCE_URL:jdbc:h2:file:${LITE_ALERT_DATA_DIR:./data}/lite-alert;MODE=MySQL;AUTO_SERVER=TRUE}
+    username: ${LITE_ALERT_DATASOURCE_USERNAME:sa}
+    password: ${LITE_ALERT_DATASOURCE_PASSWORD:}
+    driver-class-name: ${LITE_ALERT_DATASOURCE_DRIVER:org.h2.Driver}
+  h2:
+    console:
+      enabled: ${LITE_ALERT_H2_CONSOLE:false}
 
 server:
   port: ${PORT:8080}
@@ -29,6 +37,8 @@ management:
 # ---- lite-alert app config ----
 lite-alert:
   data-dir: ${LITE_ALERT_DATA_DIR:./data}
+  database:
+    type: ${LITE_ALERT_DATABASE_TYPE:h2}
   jwt:
     # secret must be supplied via env in non-dev profiles; dev uses a stable fallback
     secret: ${LITE_ALERT_JWT_SECRET:dev-only-secret-change-in-prod-please-32+chars}

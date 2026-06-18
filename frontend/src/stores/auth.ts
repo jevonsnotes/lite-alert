@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { post, get } from '@/http'
+import { md5 } from '@/utils/md5'
 
 export type UserProfile = {
   id: string
@@ -45,7 +46,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async login(username: string, password: string) {
-      const res = await post<Snapshot>('/auth/login', { username, password })
+      const res = await post<Snapshot>('/auth/login', { username, password: md5(password) })
       this.token = res.token
       this.expiresAt = res.expiresAt
       this.user = res.user

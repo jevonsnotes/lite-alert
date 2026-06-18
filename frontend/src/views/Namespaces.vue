@@ -9,6 +9,7 @@ type Namespace = {
   id: string
   name: string
   ownerId: string
+  status?: 'ACTIVE' | 'DISABLED'
   description?: string
   createdAt?: string
 }
@@ -73,6 +74,16 @@ function topicsFor(nsId: string): Topic[] {
   return all.filter(t => matchTopic(t, needle))
 }
 
+function topicStats(nsId: string) {
+  const all = expanded.value[nsId] ?? []
+  return {
+    total: all.length,
+    published: all.filter(t => t.status === 'PUBLISHED').length,
+    disabled: all.filter(t => t.status === 'DISABLED').length,
+    draft: all.filter(t => t.status === 'DRAFT').length
+  }
+}
+
 async function ensureExpanded(row: Namespace) {
   if (expanded.value[row.id]) return
   expanded.value[row.id] = await get<Topic[]>('/topics', { params: { namespaceId: row.id } })
@@ -135,6 +146,23 @@ async function newTopic(ns: Namespace) {
     params: { id: '__new__' },
     query: { namespaceId: ns.id }
   })
+}
+
+async function disableNamespace(ns: Namespace) {
+  await ElMessageBox.confirm(
+    `禁用命名空间「${ns.name}」后，该空间下所有 Topic 的 Webhook 调用都会被拒绝，但 Topic 状态不会改变。确定继续？`,
+    '禁用命名空间',
+    { type: 'warning' }
+  )
+  await post(`/namespaces/${ns.id}/disable`)
+  ElMessage.success('已禁用')
+  await loadAll()
+}
+
+async function enableNamespace(ns: Namespace) {
+  await post(`/namespaces/${ns.id}/enable`)
+  ElMessage.success('已恢复')
+  await loadAll()
 }
 
 async function removeNamespace(ns: Namespace) {
@@ -211,12 +239,33 @@ async function removeNamespace(ns: Namespace) {
         <template #default="{ row }"><code class="mono">{{ row.id }}</code></template>
       </el-table-column>
       <el-table-column prop="description" label="描述" />
+      <el-table-column label="状态" width="110">
+        <template #default="{ row }">
+          <el-tag :type="row.status === 'DISABLED' ? 'danger' : 'success'">
+            {{ row.status || 'ACTIVE' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="Topic" width="90" align="right">
+        <template #default="{ row }">{{ topicStats(row.id).total }}</template>
+      </el-table-column>
+      <el-table-column label="已发布" width="90" align="right">
+        <template #default="{ row }">{{ topicStats(row.id).published }}</template>
+      </el-table-column>
+      <el-table-column label="禁用" width="80" align="right">
+        <template #default="{ row }">{{ topicStats(row.id).disabled }}</template>
+      </el-table-column>
+      <el-table-column label="草稿" width="80" align="right">
+        <template #default="{ row }">{{ topicStats(row.id).draft }}</template>
+      </el-table-column>
       <el-table-column label="创建时间" width="180">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="220">
         <template #default="{ row }">
           <el-button size="small" link type="primary" @click="newTopic(row)">+ Topic</el-button>
+          <el-button v-if="row.status !== 'DISABLED'" size="small" link type="warning" @click="disableNamespace(row)">禁用</el-button>
+          <el-button v-else size="small" link type="success" @click="enableNamespace(row)">恢复</el-button>
           <el-button size="small" link type="danger" @click="removeNamespace(row)">删除</el-button>
         </template>
       </el-table-column>

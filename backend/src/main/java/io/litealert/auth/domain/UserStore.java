@@ -1,84 +1,84 @@
 package io.litealert.auth.domain;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import io.litealert.common.storage.FileStore;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * In-memory + file-backed user store. Single source of truth for auth.
- *
- * <p>File: {@code users.json} — the entire list, since we expect at most
- * a few dozen users in the lifetime of an instance.
- */
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class UserStore {
 
-    public static final String FILE = "users.json";
-
-    private final FileStore fileStore;
-
-    private final Map<String, User> byId = new ConcurrentHashMap<>();
-    private final Map<String, String> idByUsername = new ConcurrentHashMap<>();
-
-    @PostConstruct
-    void load() {
-        List<User> all = fileStore.readJson(FILE, new TypeReference<List<User>>() {}, new ArrayList<>());
-        for (User u : all) {
-            byId.put(u.getId(), u);
-            idByUsername.put(u.getUsername().toLowerCase(), u.getId());
-        }
-        log.info("loaded {} users", byId.size());
-    }
+    private final JdbcTemplate jdbc;
 
     public Optional<User> findById(String id) {
-        return Optional.ofNullable(byId.get(id));
+        List<User> rows = jdbc.query("select * from la_user where id = ?", this::map, id);
+        return rows.stream().findFirst();
     }
 
     public Optional<User> findByUsername(String username) {
         if (username == null) return Optional.empty();
-        String id = idByUsername.get(username.toLowerCase());
-        return id == null ? Optional.empty() : Optional.ofNullable(byId.get(id));
+        List<User> rows = jdbc.query("select * from la_user where lower(username) = lower(?)", this::map, username);
+        return rows.stream().findFirst();
     }
 
     public List<User> findAll() {
-        return new ArrayList<>(byId.values());
+        return jdbc.query("select * from la_user order by created_at desc, username asc", this::map);
     }
 
     public boolean existsByUsername(String username) {
-        return findByUsername(username).isPresent();
+        Integer count = jdbc.queryForObject("select count(*) from la_user where lower(username) = lower(?)",
+                Integer.class, username);
+        return count != null && count > 0;
     }
 
     public synchronized User save(User u) {
-        byId.put(u.getId(), u);
-        idByUsername.put(u.getUsername().toLowerCase(), u.getId());
-        flush();
+        boolean exists = findById(u.getId()).isPresent();
+        if (exists) {
+            jdbc.update("update la_user set username=?, password_hash=?, role=?, enabled=?, created_at=?, created_by=?, updated_at=?, last_login_at=? where id=?",
+                    u.getUsername(), u.getPasswordHash(), u.getRole().name(), u.isEnabled(),
+                    ts(u.getCreatedAt()), u.getCreatedBy(), ts(u.getUpdatedAt()), ts(u.getLastLoginAt()), u.getId());
+        } else {
+            jdbc.update("insert into la_user(id, username, password_hash, role, enabled, created_at, created_by, updated_at, last_login_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    u.getId(), u.getUsername(), u.getPasswordHash(), u.getRole().name(), u.isEnabled(),
+                    ts(u.getCreatedAt()), u.getCreatedBy(), ts(u.getUpdatedAt()), ts(u.getLastLoginAt()));
+        }
         return u;
     }
 
     public synchronized void delete(String id) {
-        User removed = byId.remove(id);
-        if (removed != null) {
-            idByUsername.remove(removed.getUsername().toLowerCase());
-            flush();
-        }
+        jdbc.update("delete from la_user where id = ?", id);
     }
 
     public boolean hasAnyAdmin() {
-        return byId.values().stream().anyMatch(u -> u.getRole() == User.Role.ADMIN);
+        Integer count = jdbc.queryForObject("select count(*) from la_user where role = 'ADMIN'", Integer.class);
+        return count != null && count > 0;
     }
 
-    private void flush() {
-        fileStore.writeJson(FILE, new ArrayList<>(byId.values()));
+    private User map(ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return User.builder()
+                .id(rs.getString("id"))
+                .username(rs.getString("username"))
+                .passwordHash(rs.getString("password_hash"))
+                .role(User.Role.valueOf(rs.getString("role")))
+                .enabled(rs.getBoolean("enabled"))
+                .createdAt(instant(rs.getTimestamp("created_at")))
+                .createdBy(rs.getString("created_by"))
+                .updatedAt(instant(rs.getTimestamp("updated_at")))
+                .lastLoginAt(instant(rs.getTimestamp("last_login_at")))
+                .build();
+    }
+
+    private Timestamp ts(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
+    }
+
+    private Instant instant(Timestamp ts) {
+        return ts == null ? null : ts.toInstant();
     }
 }

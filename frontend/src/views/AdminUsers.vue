@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { get, post, patch, del } from '@/http'
 import { formatDateTime } from '@/utils/datetime'
+import { md5 } from '@/utils/md5'
 
 type User = { id: string; username: string; role: 'ADMIN' | 'USER'; enabled: boolean; createdAt?: string }
 
@@ -26,7 +27,7 @@ function openCreate() {
   dialogVisible.value = true
 }
 async function submit() {
-  await post('/users', draft)
+  await post('/users', { ...draft, password: md5(draft.password) })
   ElMessage.success('已创建')
   dialogVisible.value = false
   await load()
@@ -47,7 +48,7 @@ async function submitReset() {
     ElMessage.warning('密码至少 6 位')
     return
   }
-  await patch(`/users/${resetTarget.value!.id}`, { password: newPassword.value })
+  await patch(`/users/${resetTarget.value!.id}`, { password: md5(newPassword.value) })
   ElMessage.success('已重置')
   showResetDialog.value = false
 }

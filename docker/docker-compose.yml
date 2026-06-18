@@ -1,28 +1,116 @@
+# =============================================================================
+# Lite-Alert — docker-compose.yml
+#
+# All-in-one compose with H2, MySQL and PostgreSQL profiles.
+# Usage:
+#   H2 (default):   docker compose up -d
+#   MySQL:          docker compose --profile mysql up -d
+#   PostgreSQL:     docker compose --profile postgres up -d
+#
+# Required env vars (set in .env):
+#   JASYPT_ENCRYPTOR_PASSWORD  — Jasypt encryption key
+#   LITE_ALERT_JWT_SECRET      — JWT signing secret (>= 32 chars)
+#   LITE_ALERT_APIKEY_PEPPER   — API key pepper (>= 32 chars)
+# =============================================================================
+
 version: "3.9"
 
+# When IMAGE is set (e.g. jevonsnotes/lite-alert:1.0.0), the service pulls
+# from Docker Hub instead of building locally. IMAGE takes precedence over build.
+x-image: &image ${IMAGE:-}
+
 services:
+  # ==========================================================================
+  #  Main application — always present
+  # ==========================================================================
   lite-alert:
-    image: lite-alert:${VERSION:-latest}
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    # Docker Hub pull mode: set IMAGE env var (e.g. IMAGE=jevonsnotes/lite-alert:1.0.0)
+    image: ${IMAGE:-lite-alert:${VERSION:-latest}}
+    # Local build mode: comment out `image:` above and uncomment the `build:` block
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile
     container_name: lite-alert
     restart: unless-stopped
     ports:
       - "${PORT:-8080}:8080"
     environment:
+      # Required secrets
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:?must be set}
       LITE_ALERT_JWT_SECRET: ${LITE_ALERT_JWT_SECRET:?must be set}
       LITE_ALERT_APIKEY_PEPPER: ${LITE_ALERT_APIKEY_PEPPER:?must be set}
+      # Active profile
       SPRING_PROFILES_ACTIVE: prod
       TZ: Asia/Shanghai
+      # ---- H2 (default) ----
+      # When no external DB is selected, these fall back to H2 file mode.
+      LITE_ALERT_DATASOURCE_URL: ${LITE_ALERT_DATASOURCE_URL:-jdbc:h2:file:/data/lite-alert;MODE=MySQL;AUTO_SERVER=TRUE}
+      LITE_ALERT_DATASOURCE_USERNAME: ${LITE_ALERT_DATASOURCE_USERNAME:-sa}
+      LITE_ALERT_DATASOURCE_PASSWORD: ${LITE_ALERT_DATASOURCE_PASSWORD:-}
+      LITE_ALERT_DATASOURCE_DRIVER: ${LITE_ALERT_DATASOURCE_DRIVER:-org.h2.Driver}
+      LITE_ALERT_DATABASE_TYPE: ${LITE_ALERT_DATABASE_TYPE:-h2}
     volumes:
       - ./data:/data
       # optional: drop a custom application-prod.yml here to override built-in config
       # - ./config:/opt/lite-alert/config:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
       interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================================================
+  #  MySQL — activated by --profile mysql
+  # ==========================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: lite-alert-mysql
+    restart: unless-stopped
+    profiles: ["mysql"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-litealert}
+      MYSQL_DATABASE: lite_alert
+      TZ: Asia/Shanghai
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    # expose port for external tooling (optional)
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================================================
+  #  PostgreSQL — activated by --profile postgres
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: lite-alert-postgres
+    restart: unless-stopped
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-litealert}
+      POSTGRES_DB: lite_alert
+      TZ: Asia/Shanghai
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    # expose port for external tooling (optional)
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s

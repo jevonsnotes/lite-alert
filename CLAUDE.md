@@ -2,13 +2,13 @@
 
 ## 项目简介
 
-Lite-Alert 是一个无数据库化、文件加密存储、前后端一体的轻量级消息通知服务。目标是单 JAR 启动、无需外部数据库或消息队列，并通过 docker-compose 快速部署。
+Lite-Alert 是一个默认内置 H2、可切换外部数据库、前后端一体的轻量级消息通知服务。目标是单 JAR 启动，默认开箱即用，并可在生产环境切换 MySQL / PostgreSQL / GaussDB / OceanBase。
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、Jasypt、Caffeine、Jackson、Maven。
+- 后端：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、MyBatis-Flex、JDBC、H2/MySQL/PostgreSQL、Jasypt、Caffeine、Jackson、Maven。
 - 前端：Vue 3、TypeScript、Vite、Element Plus、Pinia、Vue Router、Axios、ECharts。
-- 存储：基于本地文件的 JSON 存储，敏感数据加密落盘，写入遵循临时文件 + 原子替换策略。
+- 存储：默认 H2 数据库，可通过配置切换 MySQL、PostgreSQL、GaussDB（PostgreSQL 兼容模式）和 OceanBase（MySQL 兼容模式）；复杂业务字段以 JSON 文本存储。
 - 打包：Maven 多模块，前端构建产物输出到后端静态资源目录，最终以单 JAR 交付。
 
 ## 目录约定
@@ -36,7 +36,7 @@ Lite-Alert 是一个无数据库化、文件加密存储、前后端一体的轻
 
 - 所有新功能优先参考 `docs/design/` 的既有架构和术语，避免引入与设计文档冲突的概念。
 - 后端保持按业务域分包，Controller 只负责接口适配，业务规则放在 Service，持久化细节放在 Store。
-- 文件存储继续保持无数据库依赖，不新增外部 DB/MQ/Redis 作为必需运行依赖。
+- 数据持久化以数据库为准；默认 H2，生产可切换外部 MySQL / PostgreSQL / GaussDB / OceanBase。
 - 敏感信息不得打印到日志；ApiKey 原文只允许创建后一次性返回，服务端不得存储或再次展示原文。
 - 前端页面使用 Vue 3 `<script setup lang="ts">`，UI 组件优先使用 Element Plus，图表使用 ECharts。
 - 前端接口统一通过 `frontend/src/http` 封装访问，保持 `/api` 前缀契约。

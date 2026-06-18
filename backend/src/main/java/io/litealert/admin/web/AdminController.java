@@ -4,7 +4,6 @@ import io.litealert.admin.settings.SystemSettings;
 import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.auth.CurrentUser;
 import io.litealert.common.config.LiteAlertProperties;
-import io.litealert.common.storage.FileStore;
 import io.litealert.notify.mail.MailConfig;
 import io.litealert.notify.mail.MailService;
 import lombok.RequiredArgsConstructor;
@@ -16,8 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import javax.sql.DataSource;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,7 +28,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdminController {
 
-    private final FileStore fileStore;
+    private final DataSource dataSource;
     private final LiteAlertProperties props;
     private final MailService mailService;
     private final SystemSettingsService settingsService;
@@ -41,9 +39,13 @@ public class AdminController {
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("status", "UP");
         r.put("time", Instant.now().toString());
-        Path data = fileStore.root();
-        r.put("dataDir", data.toString());
-        r.put("dataDirWritable", Files.isWritable(data));
+        try (var c = dataSource.getConnection()) {
+            r.put("database", c.getMetaData().getDatabaseProductName());
+            r.put("databaseUrl", c.getMetaData().getURL());
+        } catch (Exception e) {
+            r.put("database", "DOWN");
+            r.put("databaseError", e.getMessage());
+        }
         r.put("smtpConfigured", mailService.sender().isPresent());
         r.put("smtpOverridden", mailService.isOverridden());
         r.put("publicTopicEnabled", props.getWebhook().isAllowUserPublicTopic());

@@ -23,7 +23,6 @@ type MailConfigView = {
   username?: string
   hasPassword: boolean
   ssl: boolean
-  fromAddress?: string
   fromName?: string
   updatedAt?: string
   updatedBy?: string
@@ -55,7 +54,6 @@ const form = reactive({
   username: '',
   password: '',
   ssl: true,
-  fromAddress: '',
   fromName: ''
 })
 
@@ -75,7 +73,6 @@ async function loadAll() {
       form.username = c.username ?? ''
       form.password = ''         // never echoed; "" means keep existing
       form.ssl = c.ssl ?? true
-      form.fromAddress = c.fromAddress ?? ''
       form.fromName = c.fromName ?? ''
     }
     const s = await get<Settings>('/admin/settings')
@@ -98,7 +95,6 @@ async function saveConfig() {
       username: form.username || null,
       password: form.password,        // empty → backend keeps existing
       ssl: form.ssl,
-      fromAddress: form.fromAddress || null,
       fromName: form.fromName || null
     })
     form.password = ''                // clear the input back to "keep" mode
@@ -114,7 +110,7 @@ async function resetConfig() {
     '重置 SMTP', { type: 'warning' }
   )
   mailWrap.value = await del('/admin/mail-config')
-  Object.assign(form, { host: '', port: 465, username: '', password: '', ssl: true, fromAddress: '', fromName: '' })
+  Object.assign(form, { host: '', port: 465, username: '', password: '', ssl: true, fromName: '' })
   ElMessage.success('已重置')
 }
 
@@ -282,18 +278,10 @@ async function saveSettings() {
 
         <el-divider>发件人（可选）</el-divider>
 
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="发件邮箱">
-              <el-input v-model="form.fromAddress" placeholder="默认使用上方用户名" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="发件人名称">
-              <el-input v-model="form.fromName" placeholder="例如 Lite-Alert 通知" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <el-form-item label="发件人名称">
+          <el-input v-model="form.fromName" placeholder="例如 Lite-Alert 通知" />
+          <div class="muted">发件邮箱会自动使用 SMTP 用户名，以兼容要求 From 等于授权账号的邮件服务。</div>
+        </el-form-item>
 
         <div class="form-actions">
           <el-button type="primary" @click="saveConfig" :loading="loading">保存并立即生效</el-button>

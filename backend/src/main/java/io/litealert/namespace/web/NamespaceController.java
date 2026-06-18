@@ -44,6 +44,16 @@ public class NamespaceController {
         return service.updateDescription(id, req.description());
     }
 
+    @PostMapping("/{id}/disable")
+    public Namespace disable(@PathVariable String id) {
+        return service.disable(id);
+    }
+
+    @PostMapping("/{id}/enable")
+    public Namespace enable(@PathVariable String id) {
+        return service.enable(id);
+    }
+
     @DeleteMapping("/{id}")
     public Map<String, String> delete(@PathVariable String id) {
         service.delete(id);

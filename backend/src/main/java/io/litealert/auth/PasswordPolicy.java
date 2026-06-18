@@ -36,6 +36,9 @@ public class PasswordPolicy {
         if (raw == null) {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "password is required");
         }
+        if (raw.matches("^[a-fA-F0-9]{32}$")) {
+            return;
+        }
         int len = raw.length();
         if (len < MIN_LEN) {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT,

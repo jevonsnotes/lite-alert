@@ -55,6 +55,7 @@ public class NamespaceService {
                 .name(name)
                 .description(description)
                 .ownerId(currentUser.idOrThrow())
+                .status(Namespace.Status.ACTIVE)
                 .createdAt(Instant.now())
                 .build();
         store.save(n);
@@ -70,6 +71,34 @@ public class NamespaceService {
         n.setDescription(description);
         n.setUpdatedAt(Instant.now());
         store.save(n);
+        return n;
+    }
+
+    public Namespace disable(String id) {
+        Namespace n = getOrThrow(id);
+        n.setStatus(Namespace.Status.DISABLED);
+        n.setDisabledAt(Instant.now());
+        n.setDisabledBy(currentUser.idOrThrow());
+        n.setUpdatedAt(Instant.now());
+        store.save(n);
+        audit.log("namespace.disable", Map.of(
+                "actor", currentUser.idOrThrow(),
+                "namespaceId", id,
+                "name", n.getName()));
+        return n;
+    }
+
+    public Namespace enable(String id) {
+        Namespace n = getOrThrow(id);
+        n.setStatus(Namespace.Status.ACTIVE);
+        n.setDisabledAt(null);
+        n.setDisabledBy(null);
+        n.setUpdatedAt(Instant.now());
+        store.save(n);
+        audit.log("namespace.enable", Map.of(
+                "actor", currentUser.idOrThrow(),
+                "namespaceId", id,
+                "name", n.getName()));
         return n;
     }
 

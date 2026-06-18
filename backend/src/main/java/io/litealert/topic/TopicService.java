@@ -179,6 +179,9 @@ public class TopicService {
         t.setStatus(Topic.Status.PUBLISHED);
         t.setUpdatedAt(Instant.now());
         store.save(t);
+        audit.log("topic.enable", Map.of(
+                "actor", currentUser.idOrThrow(),
+                "topicId", t.getId()));
         return t;
     }
 

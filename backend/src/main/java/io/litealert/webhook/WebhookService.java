@@ -9,6 +9,8 @@ import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
 import io.litealert.common.web.TraceIdHolder;
 import io.litealert.notify.NotifyDispatcher;
+import io.litealert.namespace.domain.Namespace;
+import io.litealert.namespace.domain.NamespaceStore;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
 import io.litealert.transform.JsonSchemaService;
@@ -33,6 +35,7 @@ import java.util.Map;
 public class WebhookService {
 
     private final TopicStore topicStore;
+    private final NamespaceStore namespaceStore;
     private final ApiKeyStore apiKeyStore;
     private final ApiKeyAuthenticator authenticator;
     private final IpAllowlist ipAllowlist;
@@ -58,6 +61,12 @@ public class WebhookService {
             topic = topicStore.findForWebhook(namespace, topicName).orElseThrow(() ->
                     new BusinessException(ErrorCode.NOT_FOUND, "topic not found"));
             ctxAttrs.put("topicId", topic.getId());
+
+            Namespace ns = namespaceStore.findById(topic.getNamespaceId()).orElse(null);
+            if (ns != null && ns.getStatus() == Namespace.Status.DISABLED) {
+                ctxAttrs.put("namespaceId", ns.getId());
+                throw new BusinessException(ErrorCode.NAMESPACE_DISABLED);
+            }
 
             if (topic.getStatus() == Topic.Status.DRAFT) {
                 throw new BusinessException(ErrorCode.TOPIC_NOT_PUBLISHED);

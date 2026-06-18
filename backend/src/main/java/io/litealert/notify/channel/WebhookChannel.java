@@ -60,6 +60,12 @@ public class WebhookChannel implements NotifyChannel {
         }
 
         // New path: output-template-based rendering.
+        if ("XML".equalsIgnoreCase(template.getOutputFormat())) {
+            String xml = templateEngine.renderXml(template.getOutputXmlTemplate(), payload, systemVars);
+            http.postXml(target.getEndpoint(), xml);
+            return;
+        }
+
         JsonNode tpl = template.getOutputTemplate();
         if (tpl != null) {
             JsonNode out = templateEngine.render(tpl, payload, transform.getMappings(), systemVars);

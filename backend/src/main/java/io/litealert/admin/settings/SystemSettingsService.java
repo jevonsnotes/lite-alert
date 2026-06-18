@@ -2,33 +2,29 @@ package io.litealert.admin.settings;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.litealert.common.audit.AuditLogger;
+import io.litealert.common.db.DbJson;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
-import io.litealert.common.storage.FileStore;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Single source of truth for runtime-tunable settings. Loaded from
- * {@code system-settings.json} on boot; absent file → defaults.
- *
- * <p>Other beans (AuditLogger janitor, AuditController, StatsController, …)
- * read via {@link #current()} so a save here is immediately visible
- * everywhere without restarts.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SystemSettingsService {
 
-    public static final String FILE = "system-settings.json";
+    private static final String ID = "default";
 
-    private final FileStore fileStore;
+    private final JdbcTemplate jdbc;
+    private final DbJson json;
     private final AuditLogger audit;
 
     private final AtomicReference<SystemSettings> ref =
@@ -36,12 +32,17 @@ public class SystemSettingsService {
 
     @PostConstruct
     void load() {
-        SystemSettings stored = fileStore.readJson(FILE,
-                new TypeReference<>() {}, null);
-        if (stored != null) {
-            normalize(stored);
-            ref.set(stored);
-            log.info("loaded system settings from {}", FILE);
+        try {
+            String stored = jdbc.query("select settings_json from la_system_settings where id = ?",
+                    rs -> rs.next() ? rs.getString(1) : null, ID);
+            if (stored != null) {
+                SystemSettings settings = json.read(stored, new TypeReference<>() {}, new SystemSettings());
+                normalize(settings);
+                ref.set(settings);
+                log.info("loaded system settings from database");
+            }
+        } catch (Exception ignored) {
+            // DatabaseInitializer may not have run yet in early context setup; defaults are safe.
         }
     }
 
@@ -54,7 +55,15 @@ public class SystemSettingsService {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "settings body required");
         }
         normalize(incoming);
-        fileStore.writeJson(FILE, incoming);
+        boolean exists = Boolean.TRUE.equals(jdbc.query("select count(*) from la_system_settings where id = ?",
+                rs -> rs.next() && rs.getInt(1) > 0, ID));
+        if (exists) {
+            jdbc.update("update la_system_settings set settings_json=?, updated_at=? where id=?",
+                    json.write(incoming), Timestamp.from(Instant.now()), ID);
+        } else {
+            jdbc.update("insert into la_system_settings(id, settings_json, updated_at) values (?, ?, ?)",
+                    ID, json.write(incoming), Timestamp.from(Instant.now()));
+        }
         ref.set(incoming);
         audit.log("system.settings.update", Map.of(
                 "actor", actor,
@@ -73,11 +82,8 @@ public class SystemSettingsService {
     private void clampSpan(SystemSettings.Span span, int minDays, int maxDays) {
         if (span.getUnit() == null) span.setUnit(SystemSettings.Unit.DAYS);
         if (span.getValue() < 1) span.setValue(1);
-        // upper bound only matters as a sanity cap so we don't accumulate
-        // 100 years of audit files because somebody fat-fingered a value.
         int approx = span.approxDays();
         if (approx > maxDays) {
-            // shrink while preserving unit when reasonable
             span.setValue(switch (span.getUnit()) {
                 case DAYS   -> maxDays;
                 case MONTHS -> Math.max(1, maxDays / 30);

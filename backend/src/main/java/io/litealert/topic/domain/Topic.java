@@ -136,8 +136,12 @@ public class Topic {
          *  For WEBHOOK, the body is kept as the raw JSON template string
          *  (or {@code outputTemplate} if present). */
         private String body;
+        /** WEBHOOK only: outbound format, JSON by default. */
+        private String outputFormat;
         /** WEBHOOK only: outbound JSON body string (preferred over body). */
         private JsonNode outputTemplate;
+        /** WEBHOOK only: outbound XML template string. */
+        private String outputXmlTemplate;
         /** WEBHOOK only: transform mappings. */
         private Transform transform;
     }

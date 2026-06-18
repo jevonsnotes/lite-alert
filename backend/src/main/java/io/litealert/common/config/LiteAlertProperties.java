@@ -18,6 +18,7 @@ public class LiteAlertProperties {
     private String dataDir;
 
     private final Jwt jwt = new Jwt();
+    private final Database database = new Database();
     private final ApiKey apikey = new ApiKey();
     private final Webhook webhook = new Webhook();
     private final Bootstrap bootstrap = new Bootstrap();
@@ -26,6 +27,11 @@ public class LiteAlertProperties {
     public static class Jwt {
         @NotBlank private String secret;
         private long ttlSeconds = 28_800;
+    }
+
+    @Data
+    public static class Database {
+        private String type = "h2";
     }
 
     @Data

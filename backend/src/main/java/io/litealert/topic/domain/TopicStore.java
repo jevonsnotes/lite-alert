@@ -1,148 +1,104 @@
 package io.litealert.topic.domain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import io.litealert.common.storage.FileStore;
-import jakarta.annotation.PostConstruct;
+import io.litealert.common.db.DbJson;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
-/**
- * Topics live in {@code topics/{namespaceId}.json} (one file per namespace).
- * The whole set is loaded into memory at startup; subsequent writes
- * synchronously persist the affected namespace shard.
- */
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class TopicStore {
 
-    private final FileStore fileStore;
-
-    private final Map<String, Topic> byId = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, String>> byNamespaceAndName = new ConcurrentHashMap<>();
-
-    /** {namespace}/{name} → topicId for hot webhook path lookup. */
-    private final Map<String, String> webhookIndex = new ConcurrentHashMap<>();
-
-    @PostConstruct
-    void load() {
-        java.nio.file.Path topicsDir = fileStore.resolve("topics");
-        if (!java.nio.file.Files.exists(topicsDir)) return;
-        try (var stream = java.nio.file.Files.list(topicsDir)) {
-            stream.filter(p -> p.getFileName().toString().endsWith(".json"))
-                  .forEach(this::loadShard);
-        } catch (Exception e) {
-            throw new IllegalStateException("topic shard load failed", e);
-        }
-        log.info("loaded {} topics", byId.size());
-    }
-
-    private void loadShard(java.nio.file.Path p) {
-        String relative = "topics/" + p.getFileName().toString();
-        List<Topic> shard = fileStore.readJson(relative,
-                new TypeReference<List<Topic>>() {}, new ArrayList<>());
-        for (Topic t : shard) {
-            indexTopic(t);
-        }
-    }
-
-    private void indexTopic(Topic t) {
-        byId.put(t.getId(), t);
-        byNamespaceAndName.computeIfAbsent(t.getNamespaceId(), k -> new ConcurrentHashMap<>())
-                .put(t.getName().toLowerCase(), t.getId());
-        if (t.getNamespaceName() != null) {
-            webhookIndex.put(webhookKey(t.getNamespaceName(), t.getName()), t.getId());
-        }
-    }
+    private final JdbcTemplate jdbc;
+    private final DbJson json;
 
     public Optional<Topic> findById(String id) {
-        return Optional.ofNullable(byId.get(id));
+        return jdbc.query("select * from la_topic where id = ?", this::map, id).stream().findFirst();
     }
 
     public Optional<Topic> findByNamespaceAndName(String namespaceId, String name) {
-        Map<String, String> m = byNamespaceAndName.get(namespaceId);
-        if (m == null) return Optional.empty();
-        String id = m.get(name.toLowerCase());
-        return id == null ? Optional.empty() : Optional.ofNullable(byId.get(id));
+        return jdbc.query("select * from la_topic where namespace_id = ? and lower(name) = lower(?)", this::map, namespaceId, name)
+                .stream().findFirst();
     }
 
     public Optional<Topic> findForWebhook(String namespaceName, String topicName) {
-        String id = webhookIndex.get(webhookKey(namespaceName, topicName));
-        return id == null ? Optional.empty() : Optional.ofNullable(byId.get(id));
+        return jdbc.query("select * from la_topic where lower(namespace_name) = lower(?) and lower(name) = lower(?)", this::map, namespaceName, topicName)
+                .stream().findFirst();
     }
 
     public List<Topic> findByNamespace(String namespaceId) {
-        return byId.values().stream()
-                .filter(t -> namespaceId.equals(t.getNamespaceId()))
-                .toList();
+        return jdbc.query("select * from la_topic where namespace_id = ? order by created_at desc, name asc", this::map, namespaceId);
     }
 
     public List<Topic> findByOwner(String ownerId) {
-        return byId.values().stream()
-                .filter(t -> ownerId.equals(t.getOwnerId()))
-                .toList();
+        return jdbc.query("select * from la_topic where owner_id = ? order by created_at desc, name asc", this::map, ownerId);
     }
 
     public List<Topic> findAll() {
-        return new ArrayList<>(byId.values());
+        return jdbc.query("select * from la_topic order by created_at desc, name asc", this::map);
     }
 
     public synchronized Topic save(Topic t) {
-        // remove old name index entry if name changed
-        Topic prev = byId.get(t.getId());
-        if (prev != null) {
-            Map<String, String> nameIdx = byNamespaceAndName.get(prev.getNamespaceId());
-            if (nameIdx != null) nameIdx.remove(prev.getName().toLowerCase());
-            if (prev.getNamespaceName() != null) {
-                webhookIndex.remove(webhookKey(prev.getNamespaceName(), prev.getName()));
-            }
+        boolean exists = findById(t.getId()).isPresent();
+        if (exists) {
+            jdbc.update("update la_topic set namespace_id=?, namespace_name=?, name=?, description=?, owner_id=?, status=?, auth_json=?, inbound_format_json=?, templates_json=?, transform_json=?, notify_template_json=?, created_at=?, updated_at=?, published_at=? where id=?",
+                    args(t));
+        } else {
+            jdbc.update("insert into la_topic(id, namespace_id, namespace_name, name, description, owner_id, status, auth_json, inbound_format_json, templates_json, transform_json, notify_template_json, created_at, updated_at, published_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    insertArgs(t));
         }
-        indexTopic(t);
-        flushShard(t.getNamespaceId());
         return t;
     }
 
     public synchronized void delete(String id) {
-        Topic removed = byId.remove(id);
-        if (removed == null) return;
-        Map<String, String> nameIdx = byNamespaceAndName.get(removed.getNamespaceId());
-        if (nameIdx != null) nameIdx.remove(removed.getName().toLowerCase());
-        if (removed.getNamespaceName() != null) {
-            webhookIndex.remove(webhookKey(removed.getNamespaceName(), removed.getName()));
-        }
-        flushShard(removed.getNamespaceId());
+        jdbc.update("delete from la_topic where id = ?", id);
     }
 
     public synchronized void deleteByNamespace(String namespaceId) {
-        List<String> ids = byId.values().stream()
-                .filter(t -> namespaceId.equals(t.getNamespaceId()))
-                .map(Topic::getId).toList();
-        for (String id : ids) {
-            Topic t = byId.remove(id);
-            if (t != null && t.getNamespaceName() != null) {
-                webhookIndex.remove(webhookKey(t.getNamespaceName(), t.getName()));
-            }
-        }
-        byNamespaceAndName.remove(namespaceId);
-        fileStore.delete("topics/" + namespaceId + ".json");
+        jdbc.update("delete from la_topic where namespace_id = ?", namespaceId);
     }
 
-    private void flushShard(String namespaceId) {
-        List<Topic> shard = byId.values().stream()
-                .filter(t -> namespaceId.equals(t.getNamespaceId()))
-                .collect(Collectors.toList());
-        fileStore.writeJson("topics/" + namespaceId + ".json", shard);
+    private Object[] insertArgs(Topic t) {
+        return new Object[] { t.getId(), t.getNamespaceId(), t.getNamespaceName(), t.getName(), t.getDescription(),
+                t.getOwnerId(), t.getStatus().name(), json.write(t.getAuth()), json.write(t.getInboundFormat()),
+                json.write(t.getTemplates()), json.write(t.getTransform()), json.write(t.getNotifyTemplate()),
+                ts(t.getCreatedAt()), ts(t.getUpdatedAt()), ts(t.getPublishedAt()) };
     }
 
-    private String webhookKey(String ns, String topic) {
-        return ns.toLowerCase() + "/" + topic.toLowerCase();
+    private Object[] args(Topic t) {
+        return new Object[] { t.getNamespaceId(), t.getNamespaceName(), t.getName(), t.getDescription(),
+                t.getOwnerId(), t.getStatus().name(), json.write(t.getAuth()), json.write(t.getInboundFormat()),
+                json.write(t.getTemplates()), json.write(t.getTransform()), json.write(t.getNotifyTemplate()),
+                ts(t.getCreatedAt()), ts(t.getUpdatedAt()), ts(t.getPublishedAt()), t.getId() };
     }
+
+    private Topic map(ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return Topic.builder()
+                .id(rs.getString("id"))
+                .namespaceId(rs.getString("namespace_id"))
+                .namespaceName(rs.getString("namespace_name"))
+                .name(rs.getString("name"))
+                .description(rs.getString("description"))
+                .ownerId(rs.getString("owner_id"))
+                .status(Topic.Status.valueOf(rs.getString("status")))
+                .auth(json.read(rs.getString("auth_json"), Topic.Auth.class))
+                .inboundFormat(json.read(rs.getString("inbound_format_json"), com.fasterxml.jackson.databind.JsonNode.class))
+                .templates(json.read(rs.getString("templates_json"), new TypeReference<java.util.Map<io.litealert.notify.domain.NotifyTarget.Type, Topic.ChannelTemplate>>() {}, new java.util.EnumMap<>(io.litealert.notify.domain.NotifyTarget.Type.class)))
+                .transform(json.read(rs.getString("transform_json"), Topic.Transform.class))
+                .notifyTemplate(json.read(rs.getString("notify_template_json"), Topic.NotifyTemplate.class))
+                .createdAt(instant(rs.getTimestamp("created_at")))
+                .updatedAt(instant(rs.getTimestamp("updated_at")))
+                .publishedAt(instant(rs.getTimestamp("published_at")))
+                .build();
+    }
+
+    private Timestamp ts(Instant instant) { return instant == null ? null : Timestamp.from(instant); }
+    private Instant instant(Timestamp ts) { return ts == null ? null : ts.toInstant(); }
 }

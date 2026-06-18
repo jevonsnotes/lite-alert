@@ -33,6 +33,7 @@ public enum ErrorCode {
     NAMESPACE_NOT_EMPTY(409, "namespace still has published topics"),
     TOPIC_NOT_PUBLISHED(404, "topic is not published"),
     TOPIC_DISABLED(423, "topic is disabled"),
+    NAMESPACE_DISABLED(423, "namespace is disabled"),
     SCHEMA_LOCKED(409, "inboundFormat is locked while topic is published"),
 
     // ---- apikey ----

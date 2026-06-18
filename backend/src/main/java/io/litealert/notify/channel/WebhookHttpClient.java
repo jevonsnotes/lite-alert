@@ -46,4 +46,19 @@ public final class WebhookHttpClient {
         // Some chat APIs always return 200 but signal failure in the body —
         // the per-channel impl is expected to inspect when needed.
     }
+
+    public void postXml(String url, String payload) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/xml; charset=utf-8")
+                .POST(HttpRequest.BodyPublishers.ofString(payload == null ? "" : payload,
+                        java.nio.charset.StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+        int status = res.statusCode();
+        if (status < 200 || status >= 300) {
+            throw new RuntimeException("webhook responded " + status + ": " + res.body());
+        }
+    }
 }

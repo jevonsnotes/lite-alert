@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { get, post, patch, put, del } from '@/http'
@@ -25,7 +25,9 @@ type Transform = { enabled: boolean; mappings: Mapping[] }
 type ChannelTemplate = {
   subject?: string
   body?: string
+  outputFormat?: 'JSON' | 'XML'
   outputTemplate?: any          // WEBHOOK only: outbound JSON template
+  outputXmlTemplate?: string    // WEBHOOK only: outbound XML template
   transform?: Transform         // WEBHOOK only: field mappings
 }
 
@@ -152,7 +154,7 @@ const CHANNELS: ChannelDef[] = [
   { value: 'DINGTALK', label: '钉钉',           hasSubject: true,  hasBody: true,  hasOutputTemplate: false, hasTransform: false },
   { value: 'FEISHU',   label: '飞书',           hasSubject: true,  hasBody: true,  hasOutputTemplate: false, hasTransform: false },
   { value: 'WECOM',    label: '企业微信',       hasSubject: true,  hasBody: true,  hasOutputTemplate: false, hasTransform: false },
-  { value: 'WEBHOOK',  label: 'Webhook (HTTP)', hasSubject: false, hasBody: false, hasOutputTemplate: true,  hasTransform: true  }
+  { value: 'WEBHOOK',  label: 'Webhook',        hasSubject: false, hasBody: false, hasOutputTemplate: true,  hasTransform: true  }
 ]
 const channelTab = ref<ChannelType>('EMAIL')
 const currentChannel = computed(() => CHANNELS.find(c => c.value === channelTab.value)!)
@@ -207,6 +209,7 @@ const TEMPLATE_PRESETS: Record<ChannelType, ChannelTemplate> = {
 命名空间：{{namespace}}`
   },
   WEBHOOK: {
+    outputFormat: 'JSON',
     outputTemplate: {
       title: '{{title}}',
       level: '{{level}}',
@@ -217,6 +220,18 @@ const TEMPLATE_PRESETS: Record<ChannelType, ChannelTemplate> = {
       id: '{{uuid}}',
       receivedAt: '{{receivedAt}}'
     },
+    outputXmlTemplate:
+`<alert>
+  <id>{{uuid}}</id>
+  <namespace>{{namespace}}</namespace>
+  <topic>{{topic}}</topic>
+  <title>{{$.title}}</title>
+  <level>{{$.level}}</level>
+  <message>{{$.message}}</message>
+  {{$.buyer}}
+  <traceId>{{traceId}}</traceId>
+  <receivedAt>{{receivedAt}}</receivedAt>
+</alert>`,
     transform: {
       enabled: true,
       mappings: [
@@ -232,9 +247,13 @@ const TEMPLATE_PRESETS: Record<ChannelType, ChannelTemplate> = {
 // Old {{#jp}}...{{/jp}} syntax still works in the Mustache renderer.
 
 function applyWebhookPreset() {
-  templates.value.WEBHOOK.outputTemplate = JSON.parse(JSON.stringify(TEMPLATE_PRESETS.WEBHOOK.outputTemplate))
-  templates.value.WEBHOOK.transform = JSON.parse(JSON.stringify(TEMPLATE_PRESETS.WEBHOOK.transform))
+  const preset = TEMPLATE_PRESETS.WEBHOOK
+  templates.value.WEBHOOK.outputFormat = templates.value.WEBHOOK.outputFormat ?? 'JSON'
+  templates.value.WEBHOOK.outputTemplate = JSON.parse(JSON.stringify(preset.outputTemplate))
+  templates.value.WEBHOOK.outputXmlTemplate = preset.outputXmlTemplate
+  templates.value.WEBHOOK.transform = JSON.parse(JSON.stringify(preset.transform))
   webhookOutputTplError.value = null
+  syncWebhookTextFromTpl()
 }
 
 function applyTemplatePreset() {
@@ -282,14 +301,22 @@ const webhookOutputTplError = ref<string | null>(null)
 
 /** Sync the text ref from the parsed template object */
 function syncWebhookTextFromTpl() {
-  const tpl = templates.value.WEBHOOK.outputTemplate
-  webhookOutputText.value = tpl ? JSON.stringify(tpl, null, 2) : ''
+  if ((templates.value.WEBHOOK.outputFormat ?? 'JSON') === 'XML') {
+    webhookOutputText.value = templates.value.WEBHOOK.outputXmlTemplate ?? ''
+  } else {
+    const tpl = templates.value.WEBHOOK.outputTemplate
+    webhookOutputText.value = tpl ? JSON.stringify(tpl, null, 2) : ''
+  }
   webhookOutputTplError.value = null
 }
 
 /** Parse the text ref back into the template object (call on blur / save) */
 function syncWebhookTplFromText() {
   webhookOutputTplError.value = null
+  if ((templates.value.WEBHOOK.outputFormat ?? 'JSON') === 'XML') {
+    templates.value.WEBHOOK.outputXmlTemplate = webhookOutputText.value
+    return
+  }
   try {
     const parsed = JSON.parse(webhookOutputText.value || '{}')
     templates.value.WEBHOOK.outputTemplate = parsed
@@ -342,6 +369,53 @@ const ipWhitelistText = ref('')
 const subscription = ref<{ contactIds: string[] }>({ contactIds: [] })
 const myContacts = ref<Contact[]>([])
 const myApiKeys = ref<ApiKeyView[]>([])
+const subscriptionQuery = ref('')
+const subscriptionTreeRef = ref<any>()
+
+const subscriptionTreeData = computed(() => {
+  return CHANNELS
+    .map(ch => {
+      const children = myContacts.value
+        .filter(c => c.type === ch.value)
+        .map(c => ({
+          id: c.id,
+          label: `${c.label || '(未命名)'} — ${c.endpoint}`,
+          type: c.type,
+          endpoint: c.endpoint,
+          enabled: c.enabled,
+          isTarget: true
+        }))
+      return {
+        id: `type:${ch.value}`,
+        label: `${ch.label}（${children.length}）`,
+        type: ch.value,
+        isTarget: false,
+        children
+      }
+    })
+    .filter(group => group.children.length > 0)
+})
+
+function filterSubscriptionNode(value: string, data: any) {
+  const needle = value.trim().toLowerCase()
+  if (!needle) return true
+  return String(data.label ?? '').toLowerCase().includes(needle)
+      || String(data.type ?? '').toLowerCase().includes(needle)
+      || String(data.endpoint ?? '').toLowerCase().includes(needle)
+}
+
+function onSubscriptionCheck() {
+  subscription.value.contactIds = subscriptionTreeRef.value?.getCheckedKeys(true) ?? []
+}
+
+watch(subscriptionQuery, value => subscriptionTreeRef.value?.filter(value))
+watch(tabName, async value => {
+  if (value === 'subscribe') {
+    await nextTick()
+    subscriptionTreeRef.value?.setCheckedKeys(subscription.value.contactIds ?? [])
+    subscriptionTreeRef.value?.filter(subscriptionQuery.value)
+  }
+})
 
 async function loadTopic() {
   if (isNew.value) return
@@ -357,7 +431,9 @@ async function loadTopic() {
     FEISHU:   tt.FEISHU   ?? {},
     WECOM:    tt.WECOM    ?? {},
     WEBHOOK: {
+      outputFormat: tt.WEBHOOK?.outputFormat ?? 'JSON',
       outputTemplate: tt.WEBHOOK?.outputTemplate,
+      outputXmlTemplate: tt.WEBHOOK?.outputXmlTemplate,
       transform: tt.WEBHOOK?.transform ?? { enabled: false, mappings: [] }
     }
   }
@@ -366,6 +442,8 @@ async function loadTopic() {
   ipWhitelistText.value = (topic.value.auth.ipWhitelist ?? []).join('\n')
   subscription.value = await get(`/topics/${topic.value.id}/subscription`)
   myContacts.value = await get<Contact[]>('/contacts')
+  await nextTick()
+  subscriptionTreeRef.value?.setCheckedKeys(subscription.value.contactIds ?? [])
   myApiKeys.value = await get<ApiKeyView[]>('/apikeys/covering', { params: { topicId: topic.value.id } })
 }
 onMounted(loadTopic)
@@ -405,7 +483,7 @@ async function saveTemplates() {
   for (const [k, v] of Object.entries(templates.value)) {
     const subject = v.subject?.trim()
     const body = v.body?.trim()
-    const hasOutputTpl = v.outputTemplate && Object.keys(v.outputTemplate).length > 0
+    const hasOutputTpl = v.outputTemplate && Object.keys(v.outputTemplate).length > 0 || !!v.outputXmlTemplate?.trim()
     const transformActive = !!v.transform && (v.transform.enabled || (v.transform.mappings?.length ?? 0) > 0)
     if (subject || body || hasOutputTpl || transformActive) cleaned[k] = v
   }
@@ -428,6 +506,7 @@ async function saveAuth() {
 }
 
 async function saveSubscription() {
+  onSubscriptionCheck()
   await put(`/topics/${topic.value!.id}/subscription`, subscription.value.contactIds)
   ElMessage.success('订阅已更新')
 }
@@ -690,19 +769,23 @@ const SUBSCRIBED_CHANNELS = computed(() => {
             <!-- Webhook output template + mappings -->
             <template v-if="c.hasOutputTemplate">
               <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-                <strong>出站报文模板</strong>：粘贴目标 JSON 格式，其中字符串值可用
-                <code v-text="'{{变量}}'" /> 引用入站报文字段、系统变量（<code v-text="'{{namespace}}'" />、<code v-text="'{{topic}}'" />、<code v-text="'{{traceId}}'" />、<code v-text="'{{receivedAt}}'" />、<code v-text="'{{rawJson}}'" />）或动态变量（<code v-text="'{{uuid}}'" />、<code v-text="'{{timestamp}}'" />）。
-                映射表中的 from → to 会用入站报文值覆盖对应模板字段。
+                <strong>出站报文模板</strong>：可选择 JSON 或 XML。XML 模式下，<code v-text="'{{$.path}}'" />
+                指向对象/数组时会先转换为 XML 节点片段，再插入目标 XML 对应位置。
               </el-alert>
 
               <div class="row-flex" style="margin-bottom: 12px">
                 <span>启用模板渲染</span>
                 <el-switch v-model="templates.WEBHOOK.transform.enabled" />
+                <span class="muted-inline">目标格式</span>
+                <el-radio-group v-model="templates.WEBHOOK.outputFormat" size="small" @change="syncWebhookTextFromTpl">
+                  <el-radio-button :value="'JSON'">JSON</el-radio-button>
+                  <el-radio-button :value="'XML'">XML</el-radio-button>
+                </el-radio-group>
               </div>
 
               <el-row :gutter="12">
-                <el-col :span="14">
-                  <div class="muted">目标报文格式（JSON，含 <code v-text="'{{变量}}'" /> 占位符）</div>
+                <el-col :span="(templates.WEBHOOK.outputFormat || 'JSON') === 'JSON' ? 14 : 24">
+                  <div class="muted">目标报文格式（{{ templates.WEBHOOK.outputFormat || 'JSON' }}，支持 <code v-text="'{{变量}}'" /> 占位符）</div>
                   <el-input v-model="webhookOutputText" type="textarea" :rows="12"
                             @blur="syncWebhookTplFromText" />
                   <div v-if="webhookOutputTplError" class="error-hint">
@@ -711,7 +794,7 @@ const SUBSCRIBED_CHANNELS = computed(() => {
                   <el-button size="small" style="margin-top: 4px"
                              @click="applyWebhookPreset(); syncWebhookTextFromTpl()">使用预设模板</el-button>
                 </el-col>
-                <el-col :span="10">
+                <el-col v-if="(templates.WEBHOOK.outputFormat || 'JSON') === 'JSON'" :span="10">
                   <div class="muted">模板字段路径（自动提取，用于映射 To 列）</div>
                   <div class="tpl-structure">
                     <template v-if="webhookFields.length">
@@ -790,7 +873,12 @@ const SUBSCRIBED_CHANNELS = computed(() => {
             <el-alert v-if="dryRunResult?.schemaOk === false" type="error" :closable="false"
                       :title="'Schema 校验失败：' + (dryRunResult.schemaError ?? '')" />
             <template v-else-if="dryRunResult && currentChannel.hasOutputTemplate">
-              <pre class="result">{{ JSON.stringify(dryRunResult.output, null, 2) }}</pre>
+              <template v-if="dryRunResult.outputFormat === 'XML'">
+                <pre class="result">{{ dryRunResult.outputXml || '(空)' }}</pre>
+              </template>
+              <template v-else>
+                <pre class="result">{{ JSON.stringify(dryRunResult.output, null, 2) }}</pre>
+              </template>
               <template v-if="dryRunResult.traces?.length">
                 <div class="muted" style="margin-top: 8px">每条映射命中情况</div>
                 <el-table :data="dryRunResult.traces" size="small" border>
@@ -824,12 +912,34 @@ const SUBSCRIBED_CHANNELS = computed(() => {
         <el-alert type="info" :closable="false" class="info-alert">
           勾选要接收此 Topic 通知的目标。各目标根据自己的「类型」自动从「通知模板」Tab 取对应渠道的模板。
         </el-alert>
-        <el-checkbox-group v-model="subscription.contactIds">
-          <el-checkbox v-for="c in myContacts" :key="c.id" :label="c.id">
-            <el-tag size="small" effect="plain" style="margin-right: 6px">{{ c.type }}</el-tag>
-            {{ c.label || '(未命名)' }} — <code>{{ c.endpoint }}</code>
-          </el-checkbox>
-        </el-checkbox-group>
+        <div class="subscription-toolbar">
+          <el-input v-model="subscriptionQuery" clearable placeholder="搜索类型 / 名称 / 地址" style="width: 320px" />
+          <span class="muted-inline">已选择 {{ subscription.contactIds.length }} 个目标</span>
+        </div>
+        <el-tree
+          ref="subscriptionTreeRef"
+          class="subscription-tree"
+          :data="subscriptionTreeData"
+          node-key="id"
+          show-checkbox
+          default-expand-all
+          :filter-node-method="filterSubscriptionNode"
+          @check="onSubscriptionCheck"
+        >
+          <template #default="{ data }">
+            <span class="tree-node">
+              <template v-if="data.isTarget">
+                <el-tag size="small" effect="plain" style="margin-right: 6px">{{ data.type }}</el-tag>
+                <span>{{ data.label }}</span>
+                <el-tag v-if="!data.enabled" size="small" type="danger" style="margin-left: 6px">已停用</el-tag>
+              </template>
+              <template v-else>
+                <strong>{{ data.label }}</strong>
+              </template>
+            </span>
+          </template>
+        </el-tree>
+        <el-empty v-if="!myContacts.length" description="尚未添加通知目标" />
         <el-button type="primary" @click="saveSubscription" style="margin-top: 12px">保存</el-button>
       </el-tab-pane>
 
@@ -952,6 +1062,11 @@ const SUBSCRIBED_CHANNELS = computed(() => {
 .tpl-field { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
 .tpl-path { font-family: ui-monospace, monospace; font-size: 12px; color: var(--la-accent); }
 .tpl-type { font-size: 11px; }
+.subscription-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.subscription-tree { background: var(--la-bg); border: 1px solid var(--la-border); border-radius: 6px; padding: 8px 4px; }
+.tree-node { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+:deep(.el-tree-node__content) { height: 32px; }
+:deep(.el-tree-node__label) { color: var(--la-fg); }
 :deep(.el-tabs__item) { color: var(--la-fg-muted); }
 :deep(.el-tabs__item.is-active) { color: var(--la-accent); }
 </style>
