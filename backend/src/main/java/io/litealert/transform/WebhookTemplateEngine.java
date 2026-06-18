@@ -109,7 +109,9 @@ public class WebhookTemplateEngine {
         return out;
     }
 
-    public String renderXml(String template, JsonNode payload, Map<String, String> system) {
+    public String renderXml(String template, JsonNode payload,
+                           List<Topic.Transform.Mapping> mappings,
+                           Map<String, String> system) {
         if (template == null || template.isBlank()) return "";
         String text = TemplateFunctions.applyFunctions(template,
                 expr -> resolveXmlSingle(expr, system, payload));
@@ -122,7 +124,37 @@ public class WebhookTemplateEngine {
             pos = m.end();
         }
         sb.append(text.substring(pos));
-        return sb.toString();
+        text = sb.toString();
+
+        // Apply mapping rows: overwrite placeholder positions with payload values.
+        if (mappings != null) {
+            for (Topic.Transform.Mapping mapping : mappings) {
+                if (mapping.getFrom() == null || mapping.getTo() == null || mapping.getTo().isBlank()) continue;
+                Object raw;
+                try {
+                    raw = JsonPath.using(jsonPathConfig).parse(payload).read(mapping.getFrom());
+                } catch (PathNotFoundException e) {
+                    if (mapping.isRequired()) {
+                        log.debug("webhook xml transform: required path {} not found", mapping.getFrom());
+                    }
+                    continue;
+                }
+                String value;
+                if (raw instanceof JsonNode n && n.isValueNode()) {
+                    value = escapeXml(n.asText());
+                } else if (raw != null) {
+                    value = escapeXml(String.valueOf(raw));
+                } else if (mapping.getDefaultValue() != null) {
+                    value = escapeXml(String.valueOf(mapping.getDefaultValue()));
+                } else {
+                    continue;
+                }
+                // Replace any {{to}} placeholder in the rendered XML.
+                text = text.replace("{{" + mapping.getTo() + "}}", value);
+            }
+        }
+
+        return text;
     }
 
     private String resolveXmlSingle(String name, Map<String, String> system, JsonNode payload) {

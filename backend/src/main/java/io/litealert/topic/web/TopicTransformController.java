@@ -66,7 +66,12 @@ public class TopicTransformController {
             Map<String, String> sysVars = buildSystemVars(t);
             if (ch != null && "XML".equalsIgnoreCase(ch.getOutputFormat())) {
                 result.put("outputFormat", "XML");
-                result.put("outputXml", webhookEngine.renderXml(ch.getOutputXmlTemplate(), payload, sysVars));
+                result.put("outputXml", webhookEngine.renderXml(ch.getOutputXmlTemplate(), payload,
+                        transform != null ? transform.getMappings() : null, sysVars));
+                if (transform != null && transform.getMappings() != null) {
+                    TransformService.TransformResult tr = transformService.apply(transform, payload);
+                    result.put("traces", tr.traces());
+                }
                 return result;
             }
             JsonNode tpl = ch == null ? null : ch.getOutputTemplate();
