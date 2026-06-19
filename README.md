@@ -4,6 +4,12 @@ Lite-Alert 是一个前后端一体的轻量级消息通知服务。它默认使
 
 核心目标是让业务系统用一个简单的 Webhook 调用，把结构化事件转成邮件、钉钉、飞书、企业微信或通用出站 Webhook 通知，并在后台完成鉴权、校验、转换、投递和审计追踪。
 
+<img width="1920" height="879" alt="image" src="https://github.com/user-attachments/assets/e4bc0ccf-95e0-4eb8-8bba-ed78c097b69c" />
+<img width="1920" height="879" alt="image" src="https://github.com/user-attachments/assets/ac5275f7-a721-450e-b0cc-10290ce441fa" />
+<img width="1920" height="879" alt="image" src="https://github.com/user-attachments/assets/190dffa0-0c80-4857-9b9c-4d897be7f003" />
+
+
+
 ## 功能特性
 
 - **单体交付**：Spring Boot 后端与 Vue 3 前端打包进同一个 JAR / Docker 镜像。
