@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,12 +27,13 @@ public class WebhookController {
             @PathVariable String namespace,
             @PathVariable String topic,
             @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(value = "key", required = false) String queryKey,
             @RequestBody(required = false) JsonNode body,
             HttpServletRequest req) {
 
         Map<String, Object> ack = service.handle(
-                namespace, topic, authorization, body, clientIp(req));
-        return ResponseEntity.accepted().body(ack);
+                namespace, topic, authorization, queryKey, body, clientIp(req));
+        return ResponseEntity.ok(ack);
     }
 
     private String clientIp(HttpServletRequest req) {

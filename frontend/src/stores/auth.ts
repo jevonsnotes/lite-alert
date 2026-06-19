@@ -6,6 +6,8 @@ export type UserProfile = {
   id: string
   username: string
   role: 'ADMIN' | 'USER'
+  permissions?: string[]
+  roleIds?: string[]
   enabled: boolean
   createdAt?: string
 }
@@ -26,7 +28,8 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isLoggedIn: (s) => !!s.token,
-    isAdmin: (s) => s.user?.role === 'ADMIN'
+    isAdmin: (s) => s.user?.role === 'ADMIN',
+    hasPermission: (s) => (permission: string) => s.user?.role === 'ADMIN' || (s.user?.permissions ?? []).includes(permission)
   },
   actions: {
     hydrate() {

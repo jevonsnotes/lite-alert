@@ -16,10 +16,29 @@ type Namespace = {
 
 type Topic = { id: string; name: string; status: string; namespaceId: string; createdAt?: string }
 
+type TopicStats = {
+  accepted: number
+  sent: number
+  failed: number
+  pending: number
+  retryWait: number
+}
+
+type NamespaceStats = {
+  topicCount: number
+  accepted: number
+  sent: number
+  failed: number
+  pending: number
+  retryWait: number
+}
+
 const router = useRouter()
 
 const namespaces = ref<Namespace[]>([])
 const expanded = ref<Record<string, Topic[]>>({})
+const nsStats = ref<Record<string, NamespaceStats>>({})
+const tStats = ref<Record<string, TopicStats>>({})
 
 const search = ref('')
 const dialogVisible = ref(false)
@@ -37,6 +56,23 @@ async function loadAll() {
       }
     })
   )
+  // load namespace stats
+  const allNs = namespaces.value
+  await Promise.all(
+    allNs.map(async ns => {
+      try { nsStats.value[ns.id] = await get<NamespaceStats>('/admin/stats/namespace', { params: { namespaceId: ns.id } }) }
+      catch { nsStats.value[ns.id] = { topicCount: 0, accepted: 0, sent: 0, failed: 0, pending: 0, retryWait: 0 } }
+    })
+  )
+  // load per-topic stats
+  const allTopics = Object.values(expanded.value).flat()
+  if (allTopics.length > 0) {
+    const ids = allTopics.map(t => t.id).join(',')
+    try {
+      const resp = await get<Record<string, TopicStats>>('/admin/stats/topic', { params: { topicId: ids } })
+      for (const [tid, s] of Object.entries(resp)) tStats.value[tid] = s
+    } catch {}
+  }
 }
 onMounted(loadAll)
 
@@ -84,9 +120,21 @@ function topicStats(nsId: string) {
   }
 }
 
-async function ensureExpanded(row: Namespace) {
+async function ensureExpanded(row: any) {
   if (expanded.value[row.id]) return
   expanded.value[row.id] = await get<Topic[]>('/topics', { params: { namespaceId: row.id } })
+  // load topic stats for newly expanded topics
+  const ids = expanded.value[row.id].map(t => t.id).join(',')
+  if (ids) {
+    try {
+      const resp = await get<Record<string, TopicStats>>('/admin/stats/topic', { params: { topicId: ids } })
+      for (const [tid, s] of Object.entries(resp)) tStats.value[tid] = s
+    } catch {}
+  }
+}
+
+function onExpandChange(row: any, expandedRows: any) {
+  if (Array.isArray(expandedRows) && expandedRows.length) ensureExpanded(row)
 }
 
 /** Refresh just one namespace's topics — cheaper than a full reload after
@@ -95,7 +143,7 @@ async function refreshTopics(nsId: string) {
   expanded.value[nsId] = await get<Topic[]>('/topics', { params: { namespaceId: nsId } })
 }
 
-async function publishTopic(t: Topic, ns: Namespace) {
+async function publishTopic(t: any, ns: any) {
   // backend will reject NONE-mode publish without confirmation in some
   // workflows; the dedicated Topic detail page surfaces the whole confirm
   // dialog. Here we just do the simple case + tell the user to go deeper
@@ -104,7 +152,7 @@ async function publishTopic(t: Topic, ns: Namespace) {
   ElMessage.success(`已发布：${t.name}`)
   await refreshTopics(ns.id)
 }
-async function disableTopic(t: Topic, ns: Namespace) {
+async function disableTopic(t: any, ns: any) {
   await ElMessageBox.confirm(
     `禁用「${t.name}」后，该 Topic 的 webhook 调用将被拒绝（423）。确定？`,
     '禁用 Topic', { type: 'warning' }
@@ -113,12 +161,12 @@ async function disableTopic(t: Topic, ns: Namespace) {
   ElMessage.success(`已禁用：${t.name}`)
   await refreshTopics(ns.id)
 }
-async function enableTopic(t: Topic, ns: Namespace) {
+async function enableTopic(t: any, ns: any) {
   await post(`/topics/${t.id}/enable`)
   ElMessage.success(`已恢复：${t.name}`)
   await refreshTopics(ns.id)
 }
-async function deleteTopic(t: Topic, ns: Namespace) {
+async function deleteTopic(t: any, ns: any) {
   await ElMessageBox.confirm(
     `删除「${t.name}」？仅 DRAFT/DISABLED 状态可删除。`,
     '删除 Topic', { type: 'warning' }
@@ -140,7 +188,7 @@ async function submitNamespace() {
   await loadAll()
 }
 
-async function newTopic(ns: Namespace) {
+async function newTopic(ns: any) {
   router.push({
     name: 'topic-detail',
     params: { id: '__new__' },
@@ -148,7 +196,7 @@ async function newTopic(ns: Namespace) {
   })
 }
 
-async function disableNamespace(ns: Namespace) {
+async function disableNamespace(ns: any) {
   await ElMessageBox.confirm(
     `禁用命名空间「${ns.name}」后，该空间下所有 Topic 的 Webhook 调用都会被拒绝，但 Topic 状态不会改变。确定继续？`,
     '禁用命名空间',
@@ -159,13 +207,13 @@ async function disableNamespace(ns: Namespace) {
   await loadAll()
 }
 
-async function enableNamespace(ns: Namespace) {
+async function enableNamespace(ns: any) {
   await post(`/namespaces/${ns.id}/enable`)
   ElMessage.success('已恢复')
   await loadAll()
 }
 
-async function removeNamespace(ns: Namespace) {
+async function removeNamespace(ns: any) {
   await ElMessageBox.confirm(
     `确定删除命名空间「${ns.name}」？其下所有 DRAFT/DISABLED Topic 会一并删除。`,
     '危险操作',
@@ -191,32 +239,42 @@ async function removeNamespace(ns: Namespace) {
     <el-alert v-if="search && filtered.length === 0" type="info" :closable="false"
               :title="`没有命名空间匹配 “${search}”`" style="margin-bottom: 12px" />
 
-    <el-table :data="filtered" @expand-change="(row, exp) => exp.length && ensureExpanded(row)">
-      <el-table-column type="expand">
+    <el-table class="namespace-table" :data="filtered" @expand-change="onExpandChange">
+      <el-table-column type="expand" width="44">
         <template #default="{ row }">
           <div class="topic-list">
             <div class="topic-list-header">
               <span>Topic 列表（{{ topicsFor(row.id).length }}）</span>
-              <el-button size="small" type="primary" link @click="newTopic(row)">+ 新建 Topic</el-button>
             </div>
             <el-table :data="topicsFor(row.id)" size="small" empty-text="无匹配 Topic">
-              <el-table-column prop="name" label="名称" />
-              <el-table-column label="ID" width="240">
+              <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
+              <el-table-column label="ID" width="180" show-overflow-tooltip>
                 <template #default="{ row: t }">
-                  <code class="mono">{{ t.id }}</code>
+                  <code class="mono ellipsis">{{ t.id }}</code>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="状态" width="120">
+              <el-table-column prop="status" label="状态" width="110">
                 <template #default="{ row: t }">
                   <el-tag :type="t.status === 'PUBLISHED' ? 'success' : t.status === 'DISABLED' ? 'danger' : 'info'">
                     {{ t.status }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="创建时间" width="180">
+              <el-table-column label="消息统计" width="300">
+                <template #default="{ row: t }">
+                  <span class="msg-stats">
+                    <span class="ms-item" :title="'受理: ' + (tStats[t.id]?.accepted ?? 0)">受 {{ tStats[t.id]?.accepted ?? 0 }}</span>
+                    <span class="ms-item" :title="'送达: ' + (tStats[t.id]?.sent ?? 0)">送 {{ tStats[t.id]?.sent ?? 0 }}</span>
+                    <span class="ms-item ms-fail" :title="'失败: ' + (tStats[t.id]?.failed ?? 0)">败 {{ tStats[t.id]?.failed ?? 0 }}</span>
+                    <span class="ms-item ms-pending" :title="'积压: ' + (tStats[t.id]?.pending ?? 0)">积 {{ tStats[t.id]?.pending ?? 0 }}</span>
+                    <span class="ms-item ms-retry" :title="'待重试: ' + (tStats[t.id]?.retryWait ?? 0)">重 {{ tStats[t.id]?.retryWait ?? 0 }}</span>
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column label="创建时间" width="160">
                 <template #default="{ row: t }">{{ formatDateTime(t.createdAt) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="240">
+              <el-table-column label="操作" width="200">
                 <template #default="{ row: t }">
                   <el-button size="small" link type="primary"
                              @click="router.push({ name: 'topic-detail', params: { id: t.id } })">查看</el-button>
@@ -234,34 +292,43 @@ async function removeNamespace(ns: Namespace) {
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="name" label="名称" />
-      <el-table-column label="ID" width="240">
-        <template #default="{ row }"><code class="mono">{{ row.id }}</code></template>
+      <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
+      <el-table-column label="ID" width="180" show-overflow-tooltip>
+        <template #default="{ row }"><code class="mono ellipsis">{{ row.id }}</code></template>
       </el-table-column>
-      <el-table-column prop="description" label="描述" />
-      <el-table-column label="状态" width="110">
+      <el-table-column prop="description" label="描述" min-width="160" show-overflow-tooltip />
+      <el-table-column label="状态" width="96">
         <template #default="{ row }">
           <el-tag :type="row.status === 'DISABLED' ? 'danger' : 'success'">
             {{ row.status || 'ACTIVE' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Topic" width="90" align="right">
-        <template #default="{ row }">{{ topicStats(row.id).total }}</template>
+      <el-table-column label="Topic 概览" width="150">
+        <template #default="{ row }">
+          <span class="topic-summary">
+            <span>总 {{ topicStats(row.id).total }}</span>
+            <span>发 {{ topicStats(row.id).published }}</span>
+            <span>禁 {{ topicStats(row.id).disabled }}</span>
+            <span>草 {{ topicStats(row.id).draft }}</span>
+          </span>
+        </template>
       </el-table-column>
-      <el-table-column label="已发布" width="90" align="right">
-        <template #default="{ row }">{{ topicStats(row.id).published }}</template>
+      <el-table-column label="消息统计" width="320">
+        <template #default="{ row }">
+          <span class="msg-stats">
+            <span class="ms-item" :title="'受理: ' + (nsStats[row.id]?.accepted ?? 0)">受 {{ nsStats[row.id]?.accepted ?? 0 }}</span>
+            <span class="ms-item" :title="'送达: ' + (nsStats[row.id]?.sent ?? 0)">送 {{ nsStats[row.id]?.sent ?? 0 }}</span>
+            <span class="ms-item ms-fail" :title="'失败: ' + (nsStats[row.id]?.failed ?? 0)">败 {{ nsStats[row.id]?.failed ?? 0 }}</span>
+            <span class="ms-item ms-pending" :title="'积压: ' + (nsStats[row.id]?.pending ?? 0)">积 {{ nsStats[row.id]?.pending ?? 0 }}</span>
+            <span class="ms-item ms-retry" :title="'待重试: ' + (nsStats[row.id]?.retryWait ?? 0)">重 {{ nsStats[row.id]?.retryWait ?? 0 }}</span>
+          </span>
+        </template>
       </el-table-column>
-      <el-table-column label="禁用" width="80" align="right">
-        <template #default="{ row }">{{ topicStats(row.id).disabled }}</template>
-      </el-table-column>
-      <el-table-column label="草稿" width="80" align="right">
-        <template #default="{ row }">{{ topicStats(row.id).draft }}</template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="180">
+      <el-table-column label="创建时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="220">
+      <el-table-column label="操作" width="180">
         <template #default="{ row }">
           <el-button size="small" link type="primary" @click="newTopic(row)">+ Topic</el-button>
           <el-button v-if="row.status !== 'DISABLED'" size="small" link type="warning" @click="disableNamespace(row)">禁用</el-button>
@@ -289,10 +356,20 @@ async function removeNamespace(ns: Namespace) {
 </template>
 
 <style scoped>
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.header-tools { display: flex; gap: 12px; align-items: center; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .page-h { color: var(--la-fg); margin: 0; }
-.topic-list { padding: 8px 24px; }
+.namespace-table { width: 100%; }
+.topic-list { padding: 8px 16px; min-width: 0; }
 .topic-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--la-fg-muted); }
+.topic-summary { display: flex; gap: 8px; font-size: 12px; color: var(--la-fg-muted); white-space: nowrap; }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--la-fg-muted); }
+.ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.msg-stats { display: flex; gap: 6px; font-size: 11px; white-space: nowrap; }
+.ms-item { color: var(--la-fg-muted); }
+.ms-fail { color: #ef4444; }
+.ms-pending { color: #f59e0b; }
+.ms-retry { color: #a855f7; }
+:deep(.el-table__expanded-cell) { padding: 0 !important; }
+:deep(.el-button + .el-button) { margin-left: 6px; }
 </style>

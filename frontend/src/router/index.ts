@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
         meta: { adminOnly: true }
       },
       {
+        path: 'admin/roles',
+        name: 'admin-roles',
+        component: () => import('@/views/AdminRoles.vue'),
+        meta: { permission: 'ROLE_VIEW' }
+      },
+      {
         path: 'admin/system',
         name: 'admin-system',
         component: () => import('@/views/AdminSystem.vue'),
@@ -75,6 +81,9 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.adminOnly && !auth.isAdmin) {
+    return { name: 'dashboard' }
+  }
+  if (to.meta.permission && !auth.hasPermission(String(to.meta.permission))) {
     return { name: 'dashboard' }
   }
   return true

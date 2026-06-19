@@ -42,6 +42,7 @@ public class Topic {
     public enum Status { DRAFT, PUBLISHED, DISABLED }
 
     public enum AuthMode { API_KEY, NONE }
+    public enum KeyLocation { HEADER, QUERY }
 
     private String id;
     private String namespaceId;
@@ -96,6 +97,7 @@ public class Topic {
     @Data
     public static class Auth {
         private AuthMode mode = AuthMode.API_KEY;
+        private KeyLocation keyLocation = KeyLocation.HEADER;
         private List<String> ipWhitelist = new ArrayList<>();
         private RateLimit rateLimit;
 

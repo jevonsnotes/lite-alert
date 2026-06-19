@@ -8,7 +8,7 @@ import io.litealert.common.config.LiteAlertProperties;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
 import io.litealert.common.web.TraceIdHolder;
-import io.litealert.notify.NotifyDispatcher;
+import io.litealert.notify.delivery.NotifyDeliveryService;
 import io.litealert.namespace.domain.Namespace;
 import io.litealert.namespace.domain.NamespaceStore;
 import io.litealert.topic.domain.Topic;
@@ -41,12 +41,12 @@ public class WebhookService {
     private final IpAllowlist ipAllowlist;
     private final RateLimiter rateLimiter;
     private final JsonSchemaService schemaService;
-    private final NotifyDispatcher dispatcher;
+    private final NotifyDeliveryService deliveryService;
     private final AuditLogger audit;
     private final LiteAlertProperties props;
 
     public Map<String, Object> handle(String namespace, String topicName,
-                                      String authorization, JsonNode body, String remoteIp) {
+                                      String authorization, String queryKey, JsonNode body, String remoteIp) {
         // Best-effort context: every audit line carries these so the UI can
         // filter "show me all attempts on topic X" regardless of outcome.
         Map<String, Object> ctxAttrs = new LinkedHashMap<>();
@@ -81,25 +81,26 @@ public class WebhookService {
             }
 
             // 2) auth
-            if (topic.getAuth().getMode() == Topic.AuthMode.API_KEY) {
-                usedKey = authenticator.authenticate(authorization, topic, remoteIp);
-                apiKeyStore.save(usedKey);
-                ctxAttrs.put("apiKeyId", usedKey.getId());
-            }
-            ctxAttrs.put("authMode", topic.getAuth().getMode().name());
+            String presentedKey = topic.getAuth().getKeyLocation() == Topic.KeyLocation.QUERY ? queryKey : authorization;
+            usedKey = authenticator.authenticate(presentedKey, topic, remoteIp);
+            apiKeyStore.save(usedKey);
+            ctxAttrs.put("apiKeyId", usedKey.getId());
+            ctxAttrs.put("authMode", Topic.AuthMode.API_KEY.name());
+            ctxAttrs.put("keyLocation", topic.getAuth().getKeyLocation().name());
 
-            // 3) rate limit
+            // 3) rate limit — three layers: IP → ApiKey → Topic
+            if (!rateLimiter.allowIp(remoteIp)) {
+                throw new BusinessException(ErrorCode.RATE_LIMITED, "ip rate limit exceeded");
+            }
+            if (usedKey != null && !rateLimiter.allowApiKeyWithOverride(usedKey.getId(), usedKey.getRateLimitPerMinute())) {
+                throw new BusinessException(ErrorCode.RATE_LIMITED, "api key rate limit exceeded");
+            }
             if (!rateLimiter.allowTopic(topic)) {
                 throw new BusinessException(ErrorCode.RATE_LIMITED, "topic rate limit exceeded");
             }
-            if (!rateLimiter.allowIp(topic, remoteIp)) {
-                throw new BusinessException(ErrorCode.RATE_LIMITED, "ip rate limit exceeded");
-            }
 
             // 4) body size
-            int max = topic.getAuth().getMode() == Topic.AuthMode.NONE
-                    ? props.getWebhook().getPublicMaxBodySize()
-                    : props.getWebhook().getMaxBodySize();
+            int max = props.getWebhook().getMaxBodySize();
             if (body != null && body.toString().getBytes().length > max) {
                 throw new BusinessException(ErrorCode.PAYLOAD_TOO_LARGE);
             }
@@ -107,18 +108,15 @@ public class WebhookService {
             // 5) schema validation
             schemaService.validate(topic.getInboundFormat(), body);
 
-            // 6) audit accept + async dispatch.
+            // 6) audit accept + persist delivery tasks.
             // Note: payload transform is no longer applied globally here; it's
-            // a WEBHOOK-channel concern, run per-target inside the dispatcher.
+            // a WEBHOOK-channel concern, run per-target inside the worker.
             audit.log("webhook.accepted", ctxAttrs);
 
-            var nctx = NotifyDispatcher.NotifyContext.of(topic,
+            int deliveryCount = deliveryService.createDeliveries(topic,
                     TraceIdHolder.current(), body);
-            dispatcher.dispatchAsync(nctx);
 
-            return Map.of(
-                    "traceId", TraceIdHolder.current() == null ? "" : TraceIdHolder.current(),
-                    "accepted", true);
+            return deliveryService.acceptedResponse(TraceIdHolder.current(), deliveryCount);
 
         } catch (BusinessException e) {
             // expected rejection — log structured + rethrow for the standard error envelope

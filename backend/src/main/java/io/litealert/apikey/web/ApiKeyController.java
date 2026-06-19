@@ -81,6 +81,7 @@ public class ApiKeyController {
         m.put("lastUsedAt", k.getLastUsedAt() == null ? null : k.getLastUsedAt().toString());
         m.put("usageCount", k.getUsageCount());
         m.put("rotateCount", k.getRotateCount());
+        m.put("rateLimitPerMinute", k.getRateLimitPerMinute());
         return m;
     }
 }

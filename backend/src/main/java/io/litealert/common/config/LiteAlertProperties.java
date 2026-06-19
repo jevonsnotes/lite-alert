@@ -21,7 +21,6 @@ public class LiteAlertProperties {
     private final Database database = new Database();
     private final ApiKey apikey = new ApiKey();
     private final Webhook webhook = new Webhook();
-    private final Bootstrap bootstrap = new Bootstrap();
 
     @Data
     public static class Jwt {
@@ -42,28 +41,5 @@ public class LiteAlertProperties {
     @Data
     public static class Webhook {
         private int maxBodySize = 64 * 1024;
-        private int publicMaxBodySize = 32 * 1024;
-        private boolean allowUserPublicTopic = false;
-        private final RateLimit rateLimit = new RateLimit();
-
-        @Data
-        public static class RateLimit {
-            private int perTopicPerMinute = 60;
-            private int perContactPerHour = 30;
-            private int publicPerMinute = 30;
-            private int publicPerIpPerMinute = 10;
-        }
-    }
-
-    @Data
-    public static class Bootstrap {
-        private final Admin admin = new Admin();
-
-        @Data
-        public static class Admin {
-            @NotBlank private String username;
-            /** BCrypt hash, optionally wrapped with Jasypt {@code ENC(...)}. */
-            @NotBlank private String password;
-        }
     }
 }

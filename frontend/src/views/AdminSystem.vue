@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  CircleCheck, CircleClose, Folder, Lock, Promotion, Setting, Refresh
+  CircleCheck, CircleClose, Promotion, Setting, Refresh
 } from '@element-plus/icons-vue'
 import { get, put, post, del } from '@/http'
 import { formatDateTime } from '@/utils/datetime'
@@ -10,11 +10,8 @@ import { formatDateTime } from '@/utils/datetime'
 type Health = {
   status: string
   time: string
-  dataDir: string
-  dataDirWritable: boolean
   smtpConfigured: boolean
   smtpOverridden: boolean
-  publicTopicEnabled: boolean
 }
 
 type MailConfigView = {
@@ -31,7 +28,14 @@ type MailConfigView = {
 type Span = { value: number; unit: 'DAYS' | 'MONTHS' | 'YEARS' }
 type Settings = {
   auditRetention: Span
+  deliveryRetention: Span
   dashboardDefaultTrend: Span
+  rateLimit: {
+    perTopicPerMinute: number
+    perApiKeyPerMinute: number
+    perIpPerMinute: number
+  }
+  payloadMaskingSensitiveWords: string[]
 }
 
 const UNITS = [
@@ -44,9 +48,15 @@ const health = ref<Health | null>(null)
 const mailWrap = ref<{ overridden: boolean; config: MailConfigView } | null>(null)
 const settings = reactive<Settings>({
   auditRetention: { value: 90, unit: 'DAYS' },
-  dashboardDefaultTrend: { value: 14, unit: 'DAYS' }
+  deliveryRetention: { value: 90, unit: 'DAYS' },
+  dashboardDefaultTrend: { value: 14, unit: 'DAYS' },
+  rateLimit: { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 },
+  payloadMaskingSensitiveWords: []
 })
 const settingsSaving = ref(false)
+const newSensitiveWord = ref('')
+const newSensitiveWordVisible = ref(false)
+const newSensitiveWordInput = ref<any>()
 
 const form = reactive({
   host: '',
@@ -77,7 +87,10 @@ async function loadAll() {
     }
     const s = await get<Settings>('/admin/settings')
     settings.auditRetention = s.auditRetention
+    settings.deliveryRetention = s.deliveryRetention
     settings.dashboardDefaultTrend = s.dashboardDefaultTrend
+    settings.rateLimit = s.rateLimit ?? { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 }
+    settings.payloadMaskingSensitiveWords = s.payloadMaskingSensitiveWords ?? []
   } finally {
     loading.value = false
   }
@@ -134,14 +147,36 @@ async function saveSettings() {
   try {
     const saved = await put<Settings>('/admin/settings', {
       auditRetention: { ...settings.auditRetention },
-      dashboardDefaultTrend: { ...settings.dashboardDefaultTrend }
+      deliveryRetention: { ...settings.deliveryRetention },
+      dashboardDefaultTrend: { ...settings.dashboardDefaultTrend },
+      rateLimit: { ...settings.rateLimit },
+      payloadMaskingSensitiveWords: [...settings.payloadMaskingSensitiveWords]
     })
     settings.auditRetention = saved.auditRetention
+    settings.deliveryRetention = saved.deliveryRetention
     settings.dashboardDefaultTrend = saved.dashboardDefaultTrend
+    settings.rateLimit = saved.rateLimit
+    settings.payloadMaskingSensitiveWords = saved.payloadMaskingSensitiveWords ?? []
     ElMessage.success('已保存')
   } finally {
     settingsSaving.value = false
   }
+}
+
+function removeSensitiveWord(word: string) {
+  settings.payloadMaskingSensitiveWords = settings.payloadMaskingSensitiveWords.filter(w => w !== word)
+}
+function showSensitiveWordInput() {
+  newSensitiveWordVisible.value = true
+  nextTick(() => newSensitiveWordInput.value?.focus())
+}
+function addSensitiveWord() {
+  const val = newSensitiveWord.value.trim()
+  if (val && !settings.payloadMaskingSensitiveWords.includes(val)) {
+    settings.payloadMaskingSensitiveWords.push(val)
+  }
+  newSensitiveWord.value = ''
+  newSensitiveWordVisible.value = false
 }
 </script>
 
@@ -152,7 +187,7 @@ async function saveSettings() {
     <!-- ============ STATUS ============ -->
     <h3 class="section-h">实例状态</h3>
     <el-row :gutter="12" class="status-row" v-if="health">
-      <el-col :span="6">
+      <el-col :span="12">
         <div class="stat-card" :class="{ ok: health.status === 'UP' }">
           <div class="stat-icon"><el-icon :size="24"><Promotion /></el-icon></div>
           <div>
@@ -162,21 +197,7 @@ async function saveSettings() {
           </div>
         </div>
       </el-col>
-      <el-col :span="6">
-        <div class="stat-card" :class="{ ok: health.dataDirWritable, bad: !health.dataDirWritable }">
-          <div class="stat-icon"><el-icon :size="24"><Folder /></el-icon></div>
-          <div>
-            <div class="stat-label">数据目录</div>
-            <div class="stat-value">
-              <el-icon v-if="health.dataDirWritable" color="#10b981"><CircleCheck /></el-icon>
-              <el-icon v-else color="#ef4444"><CircleClose /></el-icon>
-              {{ health.dataDirWritable ? '可写' : '只读' }}
-            </div>
-            <div class="stat-sub" :title="health.dataDir">{{ health.dataDir }}</div>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="6">
+      <el-col :span="12">
         <div class="stat-card" :class="{ ok: health.smtpConfigured }">
           <div class="stat-icon"><el-icon :size="24"><Setting /></el-icon></div>
           <div>
@@ -187,18 +208,6 @@ async function saveSettings() {
               {{ health.smtpConfigured ? '已配置' : '未配置' }}
             </div>
             <div class="stat-sub">{{ health.smtpOverridden ? '使用界面配置' : '使用 yml 配置' }}</div>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-card" :class="{ warn: health.publicTopicEnabled }">
-          <div class="stat-icon"><el-icon :size="24"><Lock /></el-icon></div>
-          <div>
-            <div class="stat-label">免认证 Topic</div>
-            <div class="stat-value">
-              {{ health.publicTopicEnabled ? '所有用户可建' : '仅 ADMIN' }}
-            </div>
-            <div class="stat-sub">webhook.allow-user-public-topic</div>
           </div>
         </div>
       </el-col>
@@ -215,12 +224,52 @@ async function saveSettings() {
           </el-select>
           <div class="muted">超过保留期的审计记录会每天 03:17 从数据库中自动清理。</div>
         </el-form-item>
+        <el-form-item label="投递记录保留">
+          <el-input-number v-model="settings.deliveryRetention.value" :min="1" :max="3650" size="small" />
+          <el-select v-model="settings.deliveryRetention.unit" size="small" style="width: 90px; margin-left: 8px">
+            <el-option v-for="u in UNITS" :key="u.value" :label="u.label" :value="u.value" />
+          </el-select>
+          <div class="muted">超过保留期的已完成投递记录会自动从数据库清理，未完成任务不会清理。修改后立即生效。</div>
+        </el-form-item>
+        <el-form-item label="限流 — 全局 Topic">
+          <el-input-number v-model="settings.rateLimit.perTopicPerMinute" :min="1" :max="99999" size="small" />
+          <span class="muted" style="margin-left: 8px">次/分钟（未配置时生效）</span>
+        </el-form-item>
+        <el-form-item label="限流 — 全局 ApiKey">
+          <el-input-number v-model="settings.rateLimit.perApiKeyPerMinute" :min="1" :max="99999" size="small" />
+          <span class="muted" style="margin-left: 8px">次/分钟（未配置时生效）</span>
+        </el-form-item>
+        <el-form-item label="限流 — 全局 IP">
+          <el-input-number v-model="settings.rateLimit.perIpPerMinute" :min="1" :max="99999" size="small" />
+          <span class="muted" style="margin-left: 8px">次/分钟（未配置时生效）</span>
+        </el-form-item>
         <el-form-item label="仪表盘默认时间窗口">
           <el-input-number v-model="settings.dashboardDefaultTrend.value" :min="1" :max="365" size="small" />
           <el-select v-model="settings.dashboardDefaultTrend.unit" size="small" style="width: 90px; margin-left: 8px">
             <el-option v-for="u in UNITS" :key="u.value" :label="u.label" :value="u.value" />
           </el-select>
           <div class="muted">仪表盘趋势图首次打开时使用此窗口，用户可在页面临时调整。</div>
+        </el-form-item>
+        <el-form-item label="Payload 脱敏敏感词">
+          <div class="tag-input-wrap">
+            <el-tag
+              v-for="word in settings.payloadMaskingSensitiveWords"
+              :key="word"
+              closable
+              size="small"
+              @close="removeSensitiveWord(word)"
+            >{{ word }}</el-tag>
+            <el-input
+              v-if="newSensitiveWordVisible"
+              ref="newSensitiveWordInput"
+              v-model="newSensitiveWord"
+              size="small"
+              @keyup.enter="addSensitiveWord"
+              @blur="addSensitiveWord"
+              style="width: 120px; margin-left: 6px;"
+            />
+            <el-button v-else size="small" @click="showSensitiveWordInput" link>+</el-button>
+          </div>
         </el-form-item>
         <div class="form-actions">
           <el-button type="primary" :loading="settingsSaving" @click="saveSettings">保存</el-button>

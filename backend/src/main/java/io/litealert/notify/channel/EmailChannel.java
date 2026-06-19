@@ -29,8 +29,7 @@ public class EmailChannel implements NotifyChannel {
                      Map<String, String> systemVars) throws Exception {
         JavaMailSender sender = mailService.sender().orElse(null);
         if (sender == null) {
-            log.warn("SMTP not configured; skipping email to {}", target.getId());
-            return;
+            throw new IllegalStateException("SMTP not configured; cannot send email to " + target.getId());
         }
         var msg = sender.createMimeMessage();
         MimeMessageHelper h = new MimeMessageHelper(msg, "UTF-8");

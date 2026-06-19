@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Data
 @Builder(toBuilder = true)
@@ -17,6 +19,7 @@ import java.time.Instant;
 public class User {
 
     public enum Role { ADMIN, USER }
+    public enum Permission { DELIVERY_PAYLOAD_READ }
 
     private String id;
     private String username;
@@ -29,10 +32,16 @@ public class User {
     private String passwordHash;
 
     private Role role;
+    @Builder.Default
+    private Set<Permission> permissions = new LinkedHashSet<>();
     private boolean enabled;
 
     private Instant createdAt;
     private String createdBy;
     private Instant updatedAt;
     private Instant lastLoginAt;
+
+    public boolean hasPermission(Permission permission) {
+        return permissions != null && permissions.contains(permission);
+    }
 }

@@ -68,14 +68,27 @@ public class SystemSettingsService {
         audit.log("system.settings.update", Map.of(
                 "actor", actor,
                 "auditRetention", spanToMap(incoming.getAuditRetention()),
-                "dashboardDefaultTrend", spanToMap(incoming.getDashboardDefaultTrend())));
+                "deliveryRetention", spanToMap(incoming.getDeliveryRetention()),
+                "dashboardDefaultTrend", spanToMap(incoming.getDashboardDefaultTrend()),
+                "rateLimit", Map.of(
+                        "perTopicPerMinute", incoming.getRateLimit().getPerTopicPerMinute(),
+                        "perApiKeyPerMinute", incoming.getRateLimit().getPerApiKeyPerMinute(),
+                        "perIpPerMinute", incoming.getRateLimit().getPerIpPerMinute())));
         return incoming;
     }
 
     private void normalize(SystemSettings s) {
         if (s.getAuditRetention() == null) s.setAuditRetention(new SystemSettings.Span(90, SystemSettings.Unit.DAYS));
+        if (s.getDeliveryRetention() == null) s.setDeliveryRetention(new SystemSettings.Span(90, SystemSettings.Unit.DAYS));
         if (s.getDashboardDefaultTrend() == null) s.setDashboardDefaultTrend(new SystemSettings.Span(14, SystemSettings.Unit.DAYS));
+        if (s.getRateLimit() == null) s.setRateLimit(SystemSettings.RateLimitConfig.builder().build());
+        if (s.getPayloadMaskingSensitiveWords() == null) s.setPayloadMaskingSensitiveWords(SystemSettings.defaultSensitiveWords());
+        SystemSettings.RateLimitConfig rl = s.getRateLimit();
+        if (rl.getPerTopicPerMinute() < 1) rl.setPerTopicPerMinute(60);
+        if (rl.getPerApiKeyPerMinute() < 1) rl.setPerApiKeyPerMinute(200);
+        if (rl.getPerIpPerMinute() < 1) rl.setPerIpPerMinute(30);
         clampSpan(s.getAuditRetention(), 1, 3650);
+        clampSpan(s.getDeliveryRetention(), 1, 3650);
         clampSpan(s.getDashboardDefaultTrend(), 1, 365);
     }
 

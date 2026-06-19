@@ -70,6 +70,7 @@ public class ApiKeyService {
                 .validUntil(req.validUntil())
                 .scopes(dedupScopes(req.scopes()))
                 .status(ApiKey.Status.ACTIVE)
+                .rateLimitPerMinute(req.rateLimitPerMinute())
                 .createdAt(Instant.now())
                 .build();
         store.save(k);
@@ -86,6 +87,7 @@ public class ApiKeyService {
             throw new BusinessException(ErrorCode.APIKEY_REVOKED_FINAL);
         }
         if (req.name() != null) k.setName(req.name());
+        if (req.rateLimitPerMinute() != null) k.setRateLimitPerMinute(req.rateLimitPerMinute());
         if (req.scopes() != null) {
             validateScopes(req.scopes());
             k.setScopes(dedupScopes(req.scopes()));
@@ -231,14 +233,16 @@ public class ApiKeyService {
             String name,
             Instant validFrom,
             Instant validUntil,
-            List<ApiKey.Scope> scopes
+            List<ApiKey.Scope> scopes,
+            Integer rateLimitPerMinute
     ) {}
 
     public record UpdateRequest(
             String name,
             List<ApiKey.Scope> scopes,
             Instant validUntil,
-            boolean clearValidUntil
+            boolean clearValidUntil,
+            Integer rateLimitPerMinute
     ) {}
 
     public record CreateResult(ApiKey apiKey, String fullKey) {}

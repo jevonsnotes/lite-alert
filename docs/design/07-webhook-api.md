@@ -4,9 +4,11 @@
 
 ```
 POST /api/webhook/{namespace}/{topic}
-Headers:
-  Authorization: Bearer <apiKey>  条件必填：仅 auth.mode=API_KEY 时必填
-  X-Trace-Id: <optional>          可选，用于贯穿业务方与 lite-alert
+Query (当 Topic 配置 keyLocation=QUERY):
+  ?key=<apiKey>                     必填
+Headers (当 Topic 配置 keyLocation=HEADER，默认):
+  Authorization: Bearer <apiKey>    必填
+  X-Trace-Id: <optional>            可选，用于贯穿业务方与 lite-alert
   Content-Type: application/json
 Body:
   <符合 topic.inboundFormat 的 JSON>
@@ -16,74 +18,84 @@ Body:
 
 | 状态 | 含义 |
 | --- | --- |
-| 202 Accepted | 已受理，已入派发队列。返回 `{traceId}` |
+| 200 OK | 已受理，投递任务已写入数据库。返回 `{accepted, traceId, deliveryCount}` |
 | 400 Bad Request | 报文格式不合法或 Schema 校验失败，返回错误明细 |
 | 401 Unauthorized | ApiKey 缺失/无效/过期/已撤销，或 IP 不在白名单 |
 | 403 Forbidden | ApiKey 有效但 scope 未覆盖此 Topic |
 | 404 Not Found | namespace / topic 不存在或处于 DRAFT |
 | 423 Locked | topic 已 DISABLED |
 | 429 Too Many Requests | 限流触发 |
+| 413 Payload Too Large | 报文超过大小限制（默认 64 KB） |
 | 500 Internal Server Error | 服务端异常，含 traceId |
 
-> 设计为 **fire-and-forget**：我们承诺已落审计、已入派发队列，不承诺投递成功。投递结果通过 audit/前端调用记录查询。
+> 设计为 **fire-and-forget**：我们承诺已落审计、已把投递任务持久化到数据库，不承诺投递成功。投递结果通过审计日志/前端调用记录查询。
 
 ## 2. 鉴权细节
 
-### 2.1 auth.mode = API_KEY（默认）
+### 2.1 统一 API_KEY 认证
 
-- 调用方 Header 必须携带 `Authorization: Bearer <apiKey>`
-- ApiKey 来自独立的 ApiKey 模块，**与 Topic 解耦**：用户先在「ApiKey 管理」页创建凭证、勾选授权范围
-- 调用时服务端按以下顺序校验（详见文档 11 §4）：
-  1. 解析 Bearer token
-  2. 取 prefix（前 8 字符）→ 内存索引命中 ApiKey 元数据；未命中 → 401
-  3. HMAC-SHA-256(serverPepper, fullKey) 与 `keyHash` 常量时间比较；不匹配 → 401
-  4. 校验 `status=ACTIVE`；REVOKED → 401
-  5. 校验 `validFrom ≤ now ≤ validUntil`；不在窗口 → 401（`code=EXPIRED` 或 `NOT_YET_ACTIVE`）
-  6. 校验 scope 覆盖：scopes 中存在 `{type:TOPIC, id:当前Topic}` 或 `{type:NAMESPACE, id:当前namespace}`；否则 → 403
-  7. 失败计数：同 IP + 同 prefix 连续 10 次失败 → 该 IP 锁 5 分钟
-- 错误响应区分清晰，便于业务方排查：
-  ```json
-  { "code": "API_KEY_EXPIRED",       "traceId": "tr_xxx", "message": "..." }
-  { "code": "API_KEY_REVOKED",       "traceId": "tr_xxx", "message": "..." }
-  { "code": "API_KEY_INVALID",       "traceId": "tr_xxx", "message": "..." }
-  { "code": "SCOPE_NOT_ALLOWED",     "traceId": "tr_xxx", "message": "ApiKey 未授权访问此 Topic" }
-  ```
-- audit 日志记录 `apiKeyId`（不记 token 原文）
+所有 Topic 统一使用 ApiKey 认证，不再支持免认证（NONE）模式。
 
-### 2.2 auth.mode = NONE（免认证 / 公开 Topic）
+用户可在 Topic 的「安全与接入」Tab 中选择 ApiKey 传递方式：
 
-- 调用方**无需 Authorization 头**即可调用
-- 即便如此，仍走以下校验：
-  1. **IP 白名单**：若 Topic 配置了 `auth.ipWhitelist`，未命中直接 401（这是 NONE 模式下唯一的硬性身份判定）
-  2. **限流**：默认 30 次/分钟、单 IP 10 次/分钟，可在 Topic 配置覆盖；超限 429
-  3. **报文大小**：默认上限 32 KB（API_KEY 模式默认 64 KB）
-  4. **Schema 校验**：与 API_KEY 模式一致
-- audit 日志强制记录 `authMode=NONE` + remoteIp + userAgent
-- 仅 ADMIN 默认可创建；普通 USER 需配置 `lite-alert.webhook.allow-user-public-topic=true` 才能选择
+| keyLocation | 说明 |
+| --- | --- |
+| `HEADER`（默认） | `Authorization: Bearer <apiKey>` |
+| `QUERY` | URL 参数 `?key=<apiKey>` |
 
-> 设计意图：让用户**自己**根据接入方能力决定鉴权强度。GitHub Webhook、企业内网巡检脚本等不便携带自定义 Header 的场景，可选 NONE + IP 白名单；其余默认走 API_KEY。
+**注意**：URL 参数认证更容易出现在浏览器历史、代理日志、网关日志中。推荐优先使用请求头认证。
+
+### 2.2 调用流程
+
+调用方携带 ApiKey 调用 Webhook 时，服务端按以下顺序校验：
+
+1. 根据 `keyLocation` 从 Header 或 Query 参数取 ApiKey；缺失 → 401
+2. 取 prefix（前 8 字符）→ 内存索引命中 ApiKey 元数据；未命中 → 401
+3. HMAC-SHA-256(serverPepper, fullKey) 与 `keyHash` 常量时间比较；不匹配 → 401
+4. 校验 `status=ACTIVE`；REVOKED → 401
+5. 校验 `validFrom ≤ now ≤ validUntil`；不在窗口 → 401（`code=EXPIRED` 或 `NOT_YET_ACTIVE`）
+6. 校验 scope 覆盖：scopes 中存在 `{type:TOPIC, id:当前Topic}` 或 `{type:NAMESPACE, id:当前namespace}`；否则 → 403
+7. 失败计数：同 IP + 同 prefix 连续 10 次失败 → 该 IP 锁 5 分钟
+
+错误响应区分清晰，便于业务方排查：
+
+```json
+{ "code": "API_KEY_EXPIRED",       "traceId": "tr_xxx", "message": "..." }
+{ "code": "API_KEY_REVOKED",       "traceId": "tr_xxx", "message": "..." }
+{ "code": "API_KEY_INVALID",       "traceId": "tr_xxx", "message": "..." }
+{ "code": "SCOPE_NOT_ALLOWED",     "traceId": "tr_xxx", "message": "ApiKey 未授权访问此 Topic" }
+```
+
+audit 日志记录 `apiKeyId`（不记 token 原文），并记录 `keyLocation` 值。
+
+### 2.3 调用方示例
+
+**请求头模式（默认）**：
+
+```bash
+curl -X POST "http://host/api/webhook/ns/topic" \
+  -H "Authorization: Bearer la_xxxxxx..." \
+  -H "Content-Type: application/json" \
+  -d '{"title": "告警"}'
+```
+
+**URL 参数模式**：
+
+```bash
+curl -X POST "http://host/api/webhook/ns/topic?key=la_xxxxxx..." \
+  -H "Content-Type: application/json" \
+  -d '{"title": "告警"}'
+```
 
 ## 3. 报文校验链
 
 ```
 原始 body
-  └─ 大小限制 (默认 64 KB；NONE 模式默认 32 KB)
+  └─ 大小限制 (默认 64 KB)
       └─ JSON 解析
           └─ Schema 校验 (inboundFormat)
               └─ 业务校验（如 namespace.enabled）
-                  └─ 进入派发
-```
-
-任意一步失败：拒绝并返回结构化错误：
-
-```json
-{
-  "code": "INVALID_PAYLOAD",
-  "traceId": "tr_xxxx",
-  "errors": [
-    {"path": "$.amount", "message": "must be number, found string"}
-  ]
-}
+                  └─ 写入投递任务 + 进入派发
 ```
 
 ## 4. 幂等性（可选）
@@ -95,12 +107,12 @@ Body:
 ## 5. 调用方文档自动生成
 
 - 「Topic 详情 - 接入文档」页：实时生成
-  - cURL 示例：API_KEY 模式带 `Authorization: Bearer <选中的 ApiKey>`；NONE 模式不带
+  - cURL 示例：根据当前 Topic 的 `keyLocation` 自动切换 Header / URL 参数格式
   - JSON Schema
   - 字段表（从 schema 提取）
   - 一份转换后的样例输出
 - 提供「复制」按钮，方便分享给业务侧
-- API_KEY 模式下顶部有 ApiKey 选择器：列出当前用户名下、scope 已覆盖此 Topic 的 ApiKey；选中后 cURL 实时刷新
+- 顶部有 ApiKey 选择器：列出当前用户名下、scope 已覆盖此 Topic 的 ApiKey；选中后 cURL 实时刷新
 
 ## 6. 接口代码风格（Controller）
 
@@ -110,18 +122,17 @@ Body:
 public class WebhookController {
 
     @PostMapping("/{ns}/{topic}")
-    public ResponseEntity<WebhookAck> receive(
+    public ResponseEntity<Map<String, Object>> receive(
             @PathVariable String ns,
             @PathVariable String topic,
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "X-Trace-Id",     required = false) String traceId,
-            @RequestBody JsonNode body,
+            @RequestParam(value = "key", required = false) String queryKey,
+            @RequestBody(required = false) JsonNode body,
             HttpServletRequest req) {
 
-        WebhookAck ack = webhookService.handle(
-            new WebhookRequest(ns, topic, authorization, body, traceId, req.getRemoteAddr())
-        );
-        return ResponseEntity.accepted().body(ack);
+        Map<String, Object> ack = webhookService.handle(
+                ns, topic, authorization, queryKey, body, clientIp(req));
+        return ResponseEntity.ok(ack);
     }
 }
 ```

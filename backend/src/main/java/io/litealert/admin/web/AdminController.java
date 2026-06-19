@@ -3,6 +3,8 @@ package io.litealert.admin.web;
 import io.litealert.admin.settings.SystemSettings;
 import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.config.LiteAlertProperties;
 import io.litealert.notify.mail.MailConfig;
 import io.litealert.notify.mail.MailService;
@@ -33,6 +35,7 @@ public class AdminController {
     private final MailService mailService;
     private final SystemSettingsService settingsService;
     private final CurrentUser currentUser;
+    private final PermissionService permissionService;
 
     @GetMapping("/health")
     public Map<String, Object> deepHealth() {
@@ -48,7 +51,6 @@ public class AdminController {
         }
         r.put("smtpConfigured", mailService.sender().isPresent());
         r.put("smtpOverridden", mailService.isOverridden());
-        r.put("publicTopicEnabled", props.getWebhook().isAllowUserPublicTopic());
         return r;
     }
 
@@ -103,11 +105,13 @@ public class AdminController {
 
     @GetMapping("/settings")
     public SystemSettings getSettings() {
+        permissionService.require(Permissions.SYSTEM_SETTINGS_VIEW);
         return settingsService.current();
     }
 
     @PutMapping("/settings")
     public SystemSettings saveSettings(@RequestBody SystemSettings req) {
+        permissionService.require(Permissions.SYSTEM_SETTINGS_UPDATE);
         return settingsService.save(req, currentUser.idOrThrow());
     }
 

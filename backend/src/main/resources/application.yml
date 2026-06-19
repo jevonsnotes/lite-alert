@@ -16,6 +16,11 @@ spring:
   h2:
     console:
       enabled: ${LITE_ALERT_H2_CONSOLE:false}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration/${LITE_ALERT_DATABASE_TYPE:h2}
 
 server:
   port: ${PORT:8080}
@@ -54,12 +59,6 @@ lite-alert:
       per-contact-per-hour: 30
       public-per-minute: 30
       public-per-ip-per-minute: 10
-  bootstrap:
-    admin:
-      username: admin
-      # In dev: a plain password. AdminBootstrap detects non-bcrypt prefix and
-      # hashes it on first launch. In prod, set this to ENC(<jasypt-encrypted-bcrypt-hash>).
-      password: admin123
 
 jasypt:
   encryptor:

@@ -34,11 +34,11 @@ public class ApiKeyAuthenticator {
     private final Map<String, FailRecord> failures = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> usageCounters = new ConcurrentHashMap<>();
 
-    public ApiKey authenticate(String authorization, Topic topic, String remoteIp) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new BusinessException(ErrorCode.API_KEY_INVALID, "missing bearer token");
+    public ApiKey authenticate(String presented, Topic topic, String remoteIp) {
+        if (presented == null || presented.isBlank()) {
+            throw new BusinessException(ErrorCode.API_KEY_INVALID, "missing api key");
         }
-        String token = authorization.substring(7).trim();
+        String token = presented.startsWith("Bearer ") ? presented.substring(7).trim() : presented.trim();
         if (token.isEmpty() || token.length() < 8) {
             throw new BusinessException(ErrorCode.API_KEY_INVALID);
         }

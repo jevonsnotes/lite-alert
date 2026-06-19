@@ -17,14 +17,17 @@ type ApiKey = {
   lastUsedAt?: string
   usageCount?: number
   rotateCount?: number
+  rateLimitPerMinute?: number
 }
 
 type Namespace = { id: string; name: string }
 type Topic = { id: string; name: string; namespaceId: string; namespaceName: string }
+type Settings = { rateLimit?: { perApiKeyPerMinute?: number } }
 
 const list = ref<ApiKey[]>([])
 const namespaces = ref<Namespace[]>([])
 const topics = ref<Topic[]>([])
+const apiKeyDefaultLimit = ref(200)
 const query = ref('')
 
 const dialogVisible = ref(false)
@@ -34,7 +37,8 @@ const form = reactive({
   permanent: true,
   validUntil: '',
   selectedNamespaces: [] as string[],
-  selectedTopics: [] as string[]
+  selectedTopics: [] as string[],
+  rateLimitPerMinute: null as number | null
 })
 
 const showFullKeyDialog = ref(false)
@@ -44,11 +48,16 @@ const isEditing = computed(() => !!editingId.value)
 const dialogTitle = computed(() => isEditing.value ? '编辑 ApiKey' : '新建 ApiKey')
 
 async function load() {
-  ;[list.value, namespaces.value, topics.value] = await Promise.all([
+  const [keys, ns, ts, settings] = await Promise.all([
     get<ApiKey[]>('/apikeys'),
     get<Namespace[]>('/namespaces'),
-    get<Topic[]>('/topics')
+    get<Topic[]>('/topics'),
+    get<Settings>('/admin/settings')
   ])
+  list.value = keys
+  namespaces.value = ns
+  topics.value = ts
+  apiKeyDefaultLimit.value = settings.rateLimit?.perApiKeyPerMinute ?? 200
 }
 onMounted(load)
 
@@ -70,6 +79,7 @@ function resetForm() {
   form.validUntil = ''
   form.selectedNamespaces = []
   form.selectedTopics = []
+  form.rateLimitPerMinute = null
 }
 
 function openCreate() {
@@ -84,6 +94,7 @@ function openEdit(k: any) {
   form.validUntil = k.validUntil ?? ''
   form.selectedNamespaces = k.scopes.filter((s: Scope) => s.type === 'NAMESPACE').map((s: Scope) => s.id)
   form.selectedTopics = k.scopes.filter((s: Scope) => s.type === 'TOPIC').map((s: Scope) => s.id)
+  form.rateLimitPerMinute = k.rateLimitPerMinute ?? null
   dialogVisible.value = true
 }
 
@@ -111,10 +122,11 @@ async function submitSave() {
     const until = validUntilIso()
     if (form.permanent) body.clearValidUntil = true
     else if (until) body.validUntil = until
+    body.rateLimitPerMinute = form.rateLimitPerMinute
     await patch(`/apikeys/${editingId.value}`, body)
     ElMessage.success('已保存')
   } else {
-    const body: any = { name: form.name, scopes }
+    const body: any = { name: form.name, scopes, rateLimitPerMinute: form.rateLimitPerMinute }
     const until = validUntilIso()
     if (until) body.validUntil = until
     const res = await post<any>('/apikeys', body)
@@ -253,6 +265,10 @@ function scopeLabel(s: Scope) {
                        :label="`${t.namespaceName}/${t.name}`"
                        :value="t.id" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="Key 限流">
+          <el-input-number v-model="form.rateLimitPerMinute" :min="1" :max="99999" size="small" placeholder="默认" />
+          <div class="muted">限制该 ApiKey 每分钟调用次数；留空使用系统默认 {{ apiKeyDefaultLimit }} 次/分钟。</div>
         </el-form-item>
       </el-form>
       <template #footer>

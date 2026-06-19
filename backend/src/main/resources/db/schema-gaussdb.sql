@@ -8,6 +8,7 @@ create table if not exists la_user (
   username varchar(64) not null unique,
   password_hash varchar(255) not null,
   role varchar(16) not null,
+  permissions_json text null,
   enabled boolean not null,
   created_at timestamp null,
   created_by varchar(64) null,
@@ -59,7 +60,8 @@ create table if not exists la_api_key (
   created_at timestamp null,
   last_used_at timestamp null,
   usage_count bigint not null default 0,
-  rotate_count bigint not null default 0
+  rotate_count bigint not null default 0,
+  rate_limit_per_minute int
 );
 
 create table if not exists la_notify_target (
@@ -92,4 +94,23 @@ create table if not exists la_audit_log (
   actor varchar(64) null,
   trace_id varchar(128) null,
   attrs_json text null
+);
+
+create table if not exists la_notify_delivery (
+  id varchar(64) primary key,
+  trace_id varchar(128) null,
+  topic_id varchar(64) not null,
+  target_id varchar(64) not null,
+  channel varchar(32) not null,
+  payload_json text not null,
+  status varchar(32) not null,
+  attempt int not null default 0,
+  max_attempts int not null default 5,
+  next_retry_at timestamp not null,
+  locked_by varchar(128) null,
+  locked_at timestamp null,
+  last_error text null,
+  created_at timestamp not null,
+  updated_at timestamp not null,
+  finished_at timestamp null
 );

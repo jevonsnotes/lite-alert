@@ -46,6 +46,7 @@ public class ApiKey {
     private Instant lastUsedAt;
     private long usageCount;
     private long rotateCount;
+    private Integer rateLimitPerMinute;
 
     @Data
     @NoArgsConstructor

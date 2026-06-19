@@ -5,11 +5,18 @@ import { get, post, patch, del } from '@/http'
 import { formatDateTime } from '@/utils/datetime'
 import { md5 } from '@/utils/md5'
 
-type User = { id: string; username: string; role: 'ADMIN' | 'USER'; enabled: boolean; createdAt?: string }
+type User = { id: string; username: string; role: 'ADMIN' | 'USER'; roleIds?: string[]; enabled: boolean; createdAt?: string }
+type Role = { id: string; name: string }
 
 const list = ref<User[]>([])
+const roles = ref<Role[]>([])
 const dialogVisible = ref(false)
-const draft = reactive({ username: '', password: '', role: 'USER' })
+const draft = reactive<{ username: string; password: string; role: 'ADMIN' | 'USER'; roleIds: string[] }>({
+  username: '',
+  password: '',
+  role: 'USER',
+  roleIds: []
+})
 
 const showResetDialog = ref(false)
 const resetTarget = ref<User | null>(null)
@@ -17,6 +24,7 @@ const newPassword = ref('')
 
 async function load() {
   list.value = await get<User[]>('/users')
+  roles.value = await get<Role[]>('/roles')
 }
 onMounted(load)
 
@@ -24,6 +32,7 @@ function openCreate() {
   draft.username = ''
   draft.password = ''
   draft.role = 'USER'
+  draft.roleIds = []
   dialogVisible.value = true
 }
 async function submit() {
@@ -33,12 +42,17 @@ async function submit() {
   await load()
 }
 
-async function toggle(u: User) {
+async function toggle(u: any) {
   await patch(`/users/${u.id}`, { enabled: !u.enabled })
   await load()
 }
 
-function openReset(u: User) {
+async function updateRoles(u: any, roleIds: string[]) {
+  await patch(`/users/${u.id}`, { roleIds })
+  await load()
+}
+
+function openReset(u: any) {
   resetTarget.value = u
   newPassword.value = ''
   showResetDialog.value = true
@@ -53,7 +67,7 @@ async function submitReset() {
   showResetDialog.value = false
 }
 
-async function remove(u: User) {
+async function remove(u: any) {
   await ElMessageBox.confirm(`删除用户「${u.username}」？`, { type: 'warning' })
   await del(`/users/${u.id}`)
   ElMessage.success('已删除')
@@ -79,6 +93,19 @@ async function remove(u: User) {
           <el-switch :model-value="row.enabled" @change="toggle(row)" />
         </template>
       </el-table-column>
+      <el-table-column label="角色绑定" min-width="220">
+        <template #default="{ row }">
+          <el-select
+            :model-value="row.roleIds ?? []"
+            multiple
+            collapse-tags
+            size="small"
+            style="width: 100%"
+            @change="(v: string[]) => updateRoles(row, v)">
+            <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
+          </el-select>
+        </template>
+      </el-table-column>
       <el-table-column label="创建时间" width="180">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
@@ -99,6 +126,11 @@ async function remove(u: User) {
             <el-radio value="USER">USER</el-radio>
             <el-radio value="ADMIN">ADMIN</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item label="角色绑定">
+          <el-select v-model="draft.roleIds" multiple style="width: 100%">
+            <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>

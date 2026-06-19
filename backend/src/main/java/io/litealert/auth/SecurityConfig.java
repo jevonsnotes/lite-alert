@@ -42,13 +42,17 @@ public class SecurityConfig {
             .formLogin(AbstractHttpConfigurer::disable)
             .httpBasic(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // H2 Console needs to load inside an iframe; allow same-origin frames.
+            .headers(headers -> headers
+                .frameOptions(frameOptions -> frameOptions.sameOrigin())
+            )
             .authorizeHttpRequests(reg -> reg
-                .requestMatchers("/api/health", "/api/actuator/**").permitAll()
+                .requestMatchers("/api/health", "/api/actuator/**", "/h2-console/**").permitAll()
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/webhook/**").permitAll()        // own auth flow
                 .requestMatchers("/", "/index.html",
                         "/assets/**", "/favicon.ico",
-                        "/static/**").permitAll()
+                        "/static/**", "/h2-console/**").permitAll()
                 .requestMatchers("/api/admin/**", "/api/users/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()                              // SPA fallback paths

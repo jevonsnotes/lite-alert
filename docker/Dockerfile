@@ -13,7 +13,8 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q -pl backend -am dependency:go-offline
 
 # Backend source + frontend tree. backend/pom.xml runs npm install + build
-# automatically and Vite emits straight into the backend's static resources.
+# automatically; Vite emits to target/frontend-static and Maven copies it
+# into target/classes/static for the Spring Boot classpath.
 COPY backend/src backend/src
 COPY frontend frontend
 

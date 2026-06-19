@@ -1,5 +1,7 @@
 package io.litealert.auth.domain;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import io.litealert.common.db.DbJson;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -9,12 +11,15 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class UserStore {
 
     private final JdbcTemplate jdbc;
+    private final DbJson json;
 
     public Optional<User> findById(String id) {
         List<User> rows = jdbc.query("select * from la_user where id = ?", this::map, id);
@@ -40,12 +45,12 @@ public class UserStore {
     public synchronized User save(User u) {
         boolean exists = findById(u.getId()).isPresent();
         if (exists) {
-            jdbc.update("update la_user set username=?, password_hash=?, role=?, enabled=?, created_at=?, created_by=?, updated_at=?, last_login_at=? where id=?",
-                    u.getUsername(), u.getPasswordHash(), u.getRole().name(), u.isEnabled(),
+            jdbc.update("update la_user set username=?, password_hash=?, role=?, permissions_json=?, enabled=?, created_at=?, created_by=?, updated_at=?, last_login_at=? where id=?",
+                    u.getUsername(), u.getPasswordHash(), u.getRole().name(), permissionsJson(u), u.isEnabled(),
                     ts(u.getCreatedAt()), u.getCreatedBy(), ts(u.getUpdatedAt()), ts(u.getLastLoginAt()), u.getId());
         } else {
-            jdbc.update("insert into la_user(id, username, password_hash, role, enabled, created_at, created_by, updated_at, last_login_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    u.getId(), u.getUsername(), u.getPasswordHash(), u.getRole().name(), u.isEnabled(),
+            jdbc.update("insert into la_user(id, username, password_hash, role, permissions_json, enabled, created_at, created_by, updated_at, last_login_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    u.getId(), u.getUsername(), u.getPasswordHash(), u.getRole().name(), permissionsJson(u), u.isEnabled(),
                     ts(u.getCreatedAt()), u.getCreatedBy(), ts(u.getUpdatedAt()), ts(u.getLastLoginAt()));
         }
         return u;
@@ -66,6 +71,7 @@ public class UserStore {
                 .username(rs.getString("username"))
                 .passwordHash(rs.getString("password_hash"))
                 .role(User.Role.valueOf(rs.getString("role")))
+                .permissions(permissions(rs.getString("permissions_json")))
                 .enabled(rs.getBoolean("enabled"))
                 .createdAt(instant(rs.getTimestamp("created_at")))
                 .createdBy(rs.getString("created_by"))
@@ -76,6 +82,16 @@ public class UserStore {
 
     private Timestamp ts(Instant instant) {
         return instant == null ? null : Timestamp.from(instant);
+    }
+
+    private Set<User.Permission> permissions(String value) {
+        List<String> names = json.read(value, new TypeReference<List<String>>() {}, List.of());
+        return names.stream().map(User.Permission::valueOf).collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
+    private String permissionsJson(User u) {
+        if (u.getPermissions() == null || u.getPermissions().isEmpty()) return json.write(List.of());
+        return json.write(u.getPermissions().stream().map(Enum::name).toList());
     }
 
     private Instant instant(Timestamp ts) {

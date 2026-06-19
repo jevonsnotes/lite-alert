@@ -34,15 +34,15 @@ public class ApiKeyStore {
     public synchronized ApiKey save(ApiKey k) {
         boolean exists = findById(k.getId()).isPresent();
         if (exists) {
-            jdbc.update("update la_api_key set owner_id=?, name=?, prefix=?, key_hash=?, valid_from=?, valid_until=?, scopes_json=?, status=?, created_at=?, last_used_at=?, usage_count=?, rotate_count=? where id=?",
+            jdbc.update("update la_api_key set owner_id=?, name=?, prefix=?, key_hash=?, valid_from=?, valid_until=?, scopes_json=?, status=?, created_at=?, last_used_at=?, usage_count=?, rotate_count=?, rate_limit_per_minute=? where id=?",
                     k.getOwnerId(), k.getName(), k.getPrefix(), k.getKeyHash(), ts(k.getValidFrom()), ts(k.getValidUntil()),
                     json.write(k.getScopes()), k.getStatus().name(), ts(k.getCreatedAt()), ts(k.getLastUsedAt()),
-                    k.getUsageCount(), k.getRotateCount(), k.getId());
+                    k.getUsageCount(), k.getRotateCount(), k.getRateLimitPerMinute(), k.getId());
         } else {
-            jdbc.update("insert into la_api_key(id, owner_id, name, prefix, key_hash, valid_from, valid_until, scopes_json, status, created_at, last_used_at, usage_count, rotate_count) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("insert into la_api_key(id, owner_id, name, prefix, key_hash, valid_from, valid_until, scopes_json, status, created_at, last_used_at, usage_count, rotate_count, rate_limit_per_minute) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     k.getId(), k.getOwnerId(), k.getName(), k.getPrefix(), k.getKeyHash(), ts(k.getValidFrom()), ts(k.getValidUntil()),
                     json.write(k.getScopes()), k.getStatus().name(), ts(k.getCreatedAt()), ts(k.getLastUsedAt()),
-                    k.getUsageCount(), k.getRotateCount());
+                    k.getUsageCount(), k.getRotateCount(), k.getRateLimitPerMinute());
         }
         return k;
     }
@@ -66,6 +66,7 @@ public class ApiKeyStore {
                 .lastUsedAt(instant(rs.getTimestamp("last_used_at")))
                 .usageCount(rs.getLong("usage_count"))
                 .rotateCount(rs.getLong("rotate_count"))
+                .rateLimitPerMinute(rs.getObject("rate_limit_per_minute") != null ? rs.getInt("rate_limit_per_minute") : null)
                 .build();
     }
 

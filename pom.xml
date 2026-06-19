@@ -46,6 +46,7 @@
         <mybatis-flex.version>1.10.9</mybatis-flex.version>
         <mysql.version>8.4.0</mysql.version>
         <postgresql.version>42.7.3</postgresql.version>
+        <flyway.version>11.7.2</flyway.version>
     </properties>
 
     <dependencyManagement>
@@ -101,6 +102,11 @@
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
                 <version>${postgresql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-core</artifactId>
+                <version>${flyway.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -44,6 +44,14 @@
 
 > 完成标志：可独立创建 / 撤销 ApiKey，授权范围按 Topic 与 namespace 都能勾选生效
 
+### M3.6 · Webhook 鉴权模式升级
+
+- 去掉 NONE 免认证模式，所有 Topic 统一 ApiKey 认证
+- 新增 `keyLocation=HEADER|QUERY`，支持请求头 / URL 参数两种传 key 方式
+- 旧 NONE Topic 在后续使用中需手动重新配置 keyLocation
+- Topic 详情 cURL 示例根据 keyLocation 自动生成
+- 响应码从 202 Accepted 改为 200 OK（兼容只认 200 的外部系统）
+
 ## M4 · 报文格式 + 转换（2 天）
 
 - JSON Schema 校验集成
@@ -94,7 +102,7 @@
 | 文件并发写损坏 | 临时文件 + 原子 rename + 备份 .bak |
 | SMTP 不稳定 | 重试队列 + 限频 + 失败 audit |
 | 误删命名空间 | 二次确认 + 拒绝级联（存在 PUBLISHED Topic 时） |
-| 误启用 NONE 模式 | 发布二次确认 + audit 记录 + 默认仅 ADMIN 可建 |
+| 误启用 NONE 模式 | 发布二次确认 + audit 记录 + 默认仅 ADMIN 可建（已废弃 NONE 模式，统一 API_KEY 认证） |
 | 报文超大撑爆内存 | body 大小限制 + JSON 解析失败即拒绝 |
 
 ## 估时合计

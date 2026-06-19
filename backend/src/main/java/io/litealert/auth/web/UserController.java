@@ -4,6 +4,7 @@ import io.litealert.auth.CurrentUser;
 import io.litealert.auth.PasswordPolicy;
 import io.litealert.auth.domain.User;
 import io.litealert.auth.domain.UserStore;
+import io.litealert.auth.role.RoleStore;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -24,6 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * ADMIN-only user management. Path is allowlisted as ROLE_ADMIN in
@@ -35,6 +38,7 @@ import java.util.Map;
 public class UserController {
 
     private final UserStore userStore;
+    private final RoleStore roleStore;
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicy passwordPolicy;
     private final CurrentUser currentUser;
@@ -43,7 +47,7 @@ public class UserController {
     @GetMapping
     public List<Map<String, Object>> list() {
         return userStore.findAll().stream()
-                .map(AuthController::profile)
+                .map(this::profile)
                 .toList();
     }
 
@@ -59,17 +63,19 @@ public class UserController {
                 .username(req.username())
                 .passwordHash(passwordEncoder.encode(req.password()))
                 .role(role)
+                .permissions(permissions(req.permissions()))
                 .enabled(true)
                 .createdAt(Instant.now())
                 .createdBy(currentUser.idOrThrow())
                 .build();
         userStore.save(u);
+        if (req.roleIds() != null) roleStore.setUserRoles(u.getId(), req.roleIds());
         audit.log("user.create", Map.of(
                 "actor", currentUser.idOrThrow(),
                 "userId", u.getId(),
                 "username", u.getUsername(),
                 "role", u.getRole().name()));
-        return AuthController.profile(u);
+        return profile(u);
     }
 
     @PatchMapping("/{id}")
@@ -78,16 +84,18 @@ public class UserController {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "user not found"));
         if (req.enabled() != null) u.setEnabled(req.enabled());
         if (req.role() != null) u.setRole(User.Role.valueOf(req.role()));
+        if (req.permissions() != null) u.setPermissions(permissions(req.permissions()));
         if (req.password() != null && !req.password().isBlank()) {
             passwordPolicy.check(u.getUsername(), req.password());
             u.setPasswordHash(passwordEncoder.encode(req.password()));
         }
         u.setUpdatedAt(Instant.now());
         userStore.save(u);
+        if (req.roleIds() != null) roleStore.setUserRoles(id, req.roleIds());
         audit.log("user.update", Map.of(
                 "actor", currentUser.idOrThrow(),
                 "userId", id));
-        return AuthController.profile(u);
+        return profile(u);
     }
 
     @DeleteMapping("/{id}")
@@ -107,12 +115,27 @@ public class UserController {
     public record CreateUserRequest(
             @NotBlank @Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9_-]{2,31}$") String username,
             @NotBlank String password,
-            String role
+            String role,
+            List<String> permissions,
+            List<String> roleIds
     ) {}
 
     public record UpdateUserRequest(
             String role,
             Boolean enabled,
-            String password
+            String password,
+            List<String> permissions,
+            List<String> roleIds
     ) {}
+
+    private Map<String, Object> profile(User u) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>(AuthController.profile(u));
+        m.put("roleIds", roleStore.roleIdsByUser(u.getId()));
+        return m;
+    }
+
+    private Set<User.Permission> permissions(List<String> names) {
+        if (names == null) return Set.of();
+        return names.stream().map(User.Permission::valueOf).collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
 }

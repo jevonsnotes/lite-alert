@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.litealert.auth.CurrentUser;
 import io.litealert.auth.domain.User;
 import io.litealert.common.audit.AuditLogger;
-import io.litealert.common.config.LiteAlertProperties;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
 import io.litealert.common.util.IdGenerator;
@@ -31,7 +30,6 @@ public class TopicService {
     private final NamespaceService namespaceService;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
-    private final LiteAlertProperties props;
 
     public List<Topic> listByNamespace(String namespaceId) {
         namespaceService.getOrThrow(namespaceId); // ownership check
@@ -61,15 +59,11 @@ public class TopicService {
         if (store.findByNamespaceAndName(namespaceId, req.name()).isPresent()) {
             throw new BusinessException(ErrorCode.TOPIC_NAME_TAKEN);
         }
-        Topic.AuthMode mode = req.authMode() == null
-                ? Topic.AuthMode.API_KEY
-                : Topic.AuthMode.valueOf(req.authMode());
-        if (mode == Topic.AuthMode.NONE) {
-            assertCanUsePublicMode();
-        }
+        Topic.AuthMode mode = Topic.AuthMode.API_KEY;
         Topic.Auth auth = new Topic.Auth(mode,
                 req.ipWhitelist() == null ? new ArrayList<>() : req.ipWhitelist(),
                 null);
+        auth.setKeyLocation(parseKeyLocation(req.keyLocation()));
 
         Topic t = Topic.builder()
                 .id(IdGenerator.topicId())
@@ -129,12 +123,10 @@ public class TopicService {
         }
 
         if (req.auth() != null) {
-            Topic.AuthMode newMode = req.auth().getMode();
-            if (newMode == Topic.AuthMode.NONE
-                    && t.getAuth().getMode() != Topic.AuthMode.NONE) {
-                assertCanUsePublicMode();
-            }
-            t.setAuth(req.auth());
+            Topic.Auth next = req.auth();
+            next.setMode(Topic.AuthMode.API_KEY);
+            if (next.getKeyLocation() == null) next.setKeyLocation(Topic.KeyLocation.HEADER);
+            t.setAuth(next);
         }
         t.setUpdatedAt(Instant.now());
         store.save(t);
@@ -197,12 +189,9 @@ public class TopicService {
                 "topicId", id));
     }
 
-    private void assertCanUsePublicMode() {
-        if (currentUser.isAdmin()) return;
-        if (props.getWebhook().isAllowUserPublicTopic()) return;
-        throw new BusinessException(ErrorCode.FORBIDDEN,
-                "creating public (NONE-auth) topics requires admin or "
-                        + "lite-alert.webhook.allow-user-public-topic=true");
+    private Topic.KeyLocation parseKeyLocation(String value) {
+        if (value == null || value.isBlank()) return Topic.KeyLocation.HEADER;
+        return Topic.KeyLocation.valueOf(value);
     }
 
     private void ensureTemplates(Topic t) {
@@ -215,6 +204,7 @@ public class TopicService {
             String name,
             String description,
             String authMode,
+            String keyLocation,
             java.util.List<String> ipWhitelist,
             JsonNode inboundFormat
     ) {}

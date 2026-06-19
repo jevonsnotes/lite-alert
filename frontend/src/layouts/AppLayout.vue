@@ -67,11 +67,15 @@ function logout() {
           <template #title>调用记录</template>
         </el-menu-item>
         <template v-if="auth.isAdmin">
-          <el-menu-item index="/admin/users">
+          <el-menu-item v-if="auth.hasPermission('USER_VIEW')" index="/admin/users">
             <el-icon><User /></el-icon>
             <template #title>用户管理</template>
           </el-menu-item>
-          <el-menu-item index="/admin/system">
+          <el-menu-item v-if="auth.hasPermission('ROLE_VIEW')" index="/admin/roles">
+            <el-icon><Key /></el-icon>
+            <template #title>角色管理</template>
+          </el-menu-item>
+          <el-menu-item v-if="auth.hasPermission('SYSTEM_SETTINGS_VIEW')" index="/admin/system">
             <el-icon><Setting /></el-icon>
             <template #title>系统设置</template>
           </el-menu-item>
@@ -79,7 +83,7 @@ function logout() {
       </el-menu>
     </el-aside>
 
-    <el-container>
+    <el-container class="content-shell">
       <el-header class="header">
         <span class="page-title">{{ route.meta.title ?? '' }}</span>
         <div class="user-pill">
@@ -126,7 +130,8 @@ function logout() {
 .page-title { color: var(--la-fg-muted); font-size: 13px; }
 .user-pill { display: flex; align-items: center; gap: 12px; }
 .username { color: var(--la-fg); font-size: 13px; }
-.main { padding: 24px; background: var(--la-bg); }
+.content-shell { min-width: 0; }
+.main { padding: 24px; background: var(--la-bg); min-width: 0; overflow-x: hidden; }
 :deep(.el-menu) { border-right: 0 !important; }
 :deep(.el-menu-item:hover) { background: var(--la-accent-soft) !important; }
 :deep(.el-menu-item.is-active) { background: var(--la-accent-soft) !important; }

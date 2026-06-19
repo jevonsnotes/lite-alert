@@ -48,7 +48,7 @@ type Topic = {
   name: string
   description?: string
   status: 'DRAFT' | 'PUBLISHED' | 'DISABLED'
-  auth: { mode: 'API_KEY' | 'NONE'; ipWhitelist: string[]; rateLimit?: any }
+  auth: { mode: 'API_KEY' | 'NONE'; keyLocation?: 'HEADER' | 'QUERY'; ipWhitelist: string[]; rateLimit?: any }
   inboundFormat?: any
   templates?: Partial<Record<ChannelType, ChannelTemplate>>
   createdAt?: string
@@ -57,11 +57,13 @@ type Topic = {
 
 type ApiKeyView = { id: string; name: string; prefix: string; status: string; validUntil?: string }
 type Contact = { id: string; type: ChannelType; label: string; endpoint: string; enabled: boolean }
+type Settings = { rateLimit?: { perTopicPerMinute?: number } }
 
 const route = useRoute()
 const router = useRouter()
 
 const topic = ref<Topic | null>(null)
+const topicDefaultLimit = ref(60)
 const isNew = computed(() => route.params.id === '__new__' || route.params.id === '__create__')
 const tabName = ref('basic')
 
@@ -70,6 +72,7 @@ const draftCreate = reactive({
   name: '',
   description: '',
   authMode: 'API_KEY' as 'API_KEY' | 'NONE',
+  keyLocation: 'HEADER' as 'HEADER' | 'QUERY',
   ipWhitelist: '' as string,
   inboundFormat:
     '{\n  "type": "object",\n  "required": ["title"],\n  "properties": {\n    "title": { "type": "string" },\n    "level": { "type": "string", "enum": ["info", "warn", "error"] },\n    "message": { "type": "string" }\n  }\n}'
@@ -439,6 +442,10 @@ watch(tabName, async value => {
 async function loadTopic() {
   if (isNew.value) return
   topic.value = await get<Topic>(`/topics/${route.params.id}`)
+  try {
+    const settings = await get<Settings>('/admin/settings')
+    topicDefaultLimit.value = settings.rateLimit?.perTopicPerMinute ?? 60
+  } catch { topicDefaultLimit.value = 60 }
   schemaJson.value = JSON.stringify(topic.value.inboundFormat ?? {}, null, 2)
   syncSchemaJsonToVisual()
 
@@ -459,6 +466,7 @@ async function loadTopic() {
   }
   syncWebhookTextFromTpl()
 
+  topic.value.auth.rateLimit = topic.value.auth.rateLimit ?? {}
   ipWhitelistText.value = (topic.value.auth.ipWhitelist ?? []).join('\n')
   subscription.value = await get(`/topics/${topic.value.id}/subscription`)
   myContacts.value = await get<Contact[]>('/contacts')
@@ -480,7 +488,8 @@ async function createTopic() {
   const created = await post<Topic>(`/topics?namespaceId=${namespaceId}`, {
     name: draftCreate.name,
     description: draftCreate.description,
-    authMode: draftCreate.authMode,
+    authMode: 'API_KEY',
+    keyLocation: draftCreate.keyLocation,
     ipWhitelist: ips,
     inboundFormat: inbound
   })
@@ -520,7 +529,7 @@ async function saveTemplatesAndNotify() {
 async function saveAuth() {
   const ips = ipWhitelistText.value.split(/\n+/).map(s => s.trim()).filter(Boolean)
   const updated = await patch<Topic>(`/topics/${topic.value!.id}`, {
-    auth: { mode: topic.value!.auth.mode, ipWhitelist: ips, rateLimit: topic.value!.auth.rateLimit ?? null }
+    auth: { mode: 'API_KEY', keyLocation: topic.value!.auth.keyLocation ?? 'HEADER', ipWhitelist: ips, rateLimit: topic.value!.auth.rateLimit ?? null }
   })
   topic.value = updated
   ElMessage.success('已保存')
@@ -533,12 +542,6 @@ async function saveSubscription() {
 }
 
 async function publish() {
-  if (topic.value!.auth.mode === 'NONE') {
-    await ElMessageBox.confirm(
-      '此 Topic 将公开可调用（无需 ApiKey）。强烈建议配合 IP 白名单。确认发布？',
-      '免认证 Topic', { type: 'warning' }
-    )
-  }
   topic.value = await post<Topic>(`/topics/${topic.value!.id}/publish`)
   ElMessage.success('已发布')
 }
@@ -552,8 +555,9 @@ async function removeTopic() {
 
 const curlExample = computed(() => {
   if (!topic.value) return ''
-  const url = `${location.origin}/api/webhook/${topic.value.namespaceName}/${topic.value.name}`
-  const auth = topic.value.auth.mode === 'API_KEY'
+  const baseUrl = `${location.origin}/api/webhook/${topic.value.namespaceName}/${topic.value.name}`
+  const url = (topic.value.auth.keyLocation ?? 'HEADER') === 'QUERY' ? `${baseUrl}?key=<ApiKey>` : baseUrl
+  const auth = (topic.value.auth.keyLocation ?? 'HEADER') === 'HEADER'
     ? '-H "Authorization: Bearer <ApiKey>" \\\n     '
     : ''
   return `curl -X POST "${url}" \\\n     ${auth}-H "Content-Type: application/json" \\\n     -d '${sampleInput.value.replace(/\n/g, '')}'`
@@ -608,11 +612,12 @@ const SUBSCRIBED_CHANNELS = computed(() => {
         <el-form-item label="描述">
           <el-input v-model="draftCreate.description" />
         </el-form-item>
-        <el-form-item label="鉴权模式">
-          <el-radio-group v-model="draftCreate.authMode">
-            <el-radio-button label="API_KEY">需要 ApiKey</el-radio-button>
-            <el-radio-button label="NONE">免认证（公开）</el-radio-button>
+        <el-form-item label="ApiKey 位置">
+          <el-radio-group v-model="draftCreate.keyLocation">
+            <el-radio-button label="HEADER">请求头 Authorization</el-radio-button>
+            <el-radio-button label="QUERY">URL 参数 key</el-radio-button>
           </el-radio-group>
+          <div class="muted">URL 参数模式形如 <code>?key=xxxxx</code>，更容易出现在代理日志中，推荐优先使用请求头。</div>
         </el-form-item>
         <el-form-item label="IP 白名单">
           <el-input v-model="draftCreate.ipWhitelist" type="textarea" :rows="3"
@@ -635,7 +640,6 @@ const SUBSCRIBED_CHANNELS = computed(() => {
         <el-tag :type="topic.status === 'PUBLISHED' ? 'success' : topic.status === 'DISABLED' ? 'danger' : 'info'">
           {{ topic.status }}
         </el-tag>
-        <el-tag v-if="topic.auth.mode === 'NONE'" type="warning" style="margin-left: 8px">免认证</el-tag>
       </div>
       <div>
         <el-button v-if="topic.status === 'DRAFT'" type="primary" @click="publish">发布</el-button>
@@ -1006,15 +1010,20 @@ const SUBSCRIBED_CHANNELS = computed(() => {
       <!-- ===== Security & Access ===== -->
       <el-tab-pane label="安全与接入" name="security">
         <el-form label-width="120px" class="form">
-          <el-form-item label="鉴权模式">
-            <el-radio-group v-model="topic.auth.mode">
-              <el-radio-button label="API_KEY">需要 ApiKey</el-radio-button>
-              <el-radio-button label="NONE">免认证（公开）</el-radio-button>
+          <el-form-item label="ApiKey 位置">
+            <el-radio-group v-model="topic.auth.keyLocation">
+              <el-radio-button label="HEADER">请求头 Authorization</el-radio-button>
+              <el-radio-button label="QUERY">URL 参数 key</el-radio-button>
             </el-radio-group>
+            <div class="muted">URL 参数模式形如 <code>?key=xxxxx</code>，更容易出现在代理日志中，推荐优先使用请求头。</div>
           </el-form-item>
           <el-form-item label="IP 白名单">
             <el-input v-model="ipWhitelistText" type="textarea" :rows="4"
                       placeholder="每行一条，CIDR 格式：例如 10.0.0.0/8" />
+          </el-form-item>
+          <el-form-item label="Topic 限流">
+            <el-input-number v-model="topic.auth.rateLimit.perMinute" :min="1" :max="99999" size="small" placeholder="默认" />
+            <div class="muted">限制该 Topic 每分钟调用次数；留空使用系统默认 {{ topicDefaultLimit }} 次/分钟。</div>
           </el-form-item>
           <el-button type="primary" @click="saveAuth">保存安全设置</el-button>
         </el-form>

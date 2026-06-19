@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { get } from '@/http'
 import { formatDateTime } from '@/utils/datetime'
@@ -18,6 +19,7 @@ type AuditRow = {
   message?: string
   channel?: string
   targetId?: string
+  deliveryId?: string
   _topic?: Label
   _namespace?: Label
   _apiKey?: Label
@@ -43,6 +45,21 @@ type AuditResp = {
     isAdmin: boolean
     userId: string
   }
+}
+
+type DeliveryDetail = {
+  id: string
+  traceId?: string
+  topicId?: string
+  targetId?: string
+  channel?: string
+  status?: string
+  attempt?: number
+  nextRetryAt?: string
+  lastError?: string
+  createdAt?: string
+  finishedAt?: string
+  payload?: any
 }
 
 type SearchField = 'all' | 'topic' | 'namespace' | 'apikey' | 'actor' | 'trace' | 'ip' | 'code'
@@ -92,7 +109,12 @@ const rangeValue = ref(1)
 const rangeUnit = ref<Unit>('DAYS')
 
 const loading = ref(false)
+const deliveryLoading = ref(false)
+const deliveryDialogVisible = ref(false)
+const deliveryDetail = ref<DeliveryDetail | null>(null)
+const countdownText = ref('')
 const lastError = ref<string | null>(null)
+let countdownTimer: number | null = null
 
 let searchTimer: number | null = null
 
@@ -142,6 +164,8 @@ function onSearchInput() {
 
 onMounted(load)
 
+onUnmounted(() => { if (countdownTimer) window.clearInterval(countdownTimer) })
+
 const QUICK_TYPES = [
   { label: '全部', value: '' },
   { label: 'Webhook 受理', value: 'webhook.accepted' },
@@ -158,10 +182,10 @@ function tagType(t: string) {
   return 'info'
 }
 
-function detailFields(row: AuditRow) {
+function detailFields(row: any) {
   const skip = new Set([
     'ts', 'type', 'traceId', 'topicId', 'apiKeyId', 'remoteIp', 'actor',
-    'code', 'message', 'channel', 'targetId',
+    'code', 'message', 'channel', 'targetId', 'deliveryId',
     '_topic', '_namespace', '_apiKey', '_actor'
   ])
   const out: Record<string, any> = {}
@@ -197,6 +221,55 @@ function searchBy(field: SearchField, value?: string) {
   searchField.value = field
   search.value = value
   reload()
+}
+
+async function openDelivery(row: any) {
+  if (!row.deliveryId) return
+  deliveryLoading.value = true
+  deliveryDialogVisible.value = true
+  deliveryDetail.value = null
+  countdownText.value = ''
+  if (countdownTimer) window.clearInterval(countdownTimer)
+  try {
+    deliveryDetail.value = await get<DeliveryDetail>(`/deliveries/${encodeURIComponent(row.deliveryId)}`)
+  } catch (e: any) {
+    deliveryDialogVisible.value = false
+    ElMessage.error(`${e?.code ?? 'ERROR'}: ${e?.message ?? e}`)
+  } finally {
+    deliveryLoading.value = false
+  }
+  startCountdown()
+}
+
+function startCountdown() {
+  if (countdownTimer) window.clearInterval(countdownTimer)
+  if (!deliveryDetail.value) return
+  const d = deliveryDetail.value
+  if (d.status !== 'RETRY_WAIT' || !d.nextRetryAt) {
+    countdownText.value = ''
+    return
+  }
+  const update = () => {
+    if (!deliveryDetail.value || !deliveryDetail.value.nextRetryAt) { countdownText.value = ''; return }
+    const retryMs = new Date(deliveryDetail.value.nextRetryAt).getTime()
+    const diff = retryMs - Date.now()
+    if (diff <= 0) { countdownText.value = '即将重试'; countdownTimer && window.clearInterval(countdownTimer); return }
+    const secs = Math.floor(diff / 1000)
+    const mm = Math.floor(secs / 60)
+    const ss = secs % 60
+    countdownText.value = `${mm}分${ss}秒后重试`
+  }
+  update()
+  countdownTimer = window.setInterval(update, 1000)
+}
+
+function prettyPayload(payload: any) {
+  if (payload == null) return ''
+  if (typeof payload === 'string') {
+    try { return JSON.stringify(JSON.parse(payload), null, 2) }
+    catch { return payload }
+  }
+  return JSON.stringify(payload, null, 2)
 }
 </script>
 
@@ -325,6 +398,14 @@ function searchBy(field: SearchField, value?: string) {
                 @click="searchBy('apikey', row.apiKeyId)">{{ row.apiKeyId }}</code>
         </template>
       </el-table-column>
+      <el-table-column label="Payload" width="110" align="center">
+        <template #default="{ row }">
+          <el-button v-if="row.deliveryId" size="small" link type="primary" @click="openDelivery(row)">
+            查看
+          </el-button>
+          <span v-else class="muted-inline">-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="Trace / IP">
         <template #default="{ row }">
           <code v-if="row.traceId" class="mono"
@@ -349,6 +430,28 @@ function searchBy(field: SearchField, value?: string) {
         @current-change="(p: number) => { page = p - 1; load() }"
         @size-change="(s: number) => { size = s; reload() }" />
     </div>
+
+    <el-dialog v-model="deliveryDialogVisible" title="投递详情 / Payload" width="760px">
+      <div v-loading="deliveryLoading">
+        <template v-if="deliveryDetail">
+          <div class="delivery-meta">
+            <div><span>投递 ID</span><code>{{ deliveryDetail.id }}</code></div>
+            <div><span>状态</span><el-tag size="small">{{ deliveryDetail.status }}</el-tag></div>
+            <div><span>通道</span><code>{{ deliveryDetail.channel }}</code></div>
+            <div><span>尝试次数</span><code>{{ deliveryDetail.attempt ?? 0 }}</code></div>
+            <div><span>Trace</span><code>{{ deliveryDetail.traceId || '-' }}</code></div>
+            <div v-if="deliveryDetail.status === 'RETRY_WAIT' && deliveryDetail.nextRetryAt"><span>下次重试</span><code>{{ countdownText || formatDateTime(deliveryDetail.nextRetryAt) }}</code></div>
+          </div>
+          <el-alert type="info" :closable="false" show-icon
+                    title="如果当前账号没有完整 Payload 查看权限，这里会显示后端返回的脱敏内容。"
+                    style="margin: 12px 0" />
+          <div v-if="deliveryDetail.lastError" class="delivery-error">
+            <strong>最近错误：</strong>{{ deliveryDetail.lastError }}
+          </div>
+          <pre class="payload-box">{{ prettyPayload(deliveryDetail.payload) }}</pre>
+        </template>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -385,4 +488,10 @@ function searchBy(field: SearchField, value?: string) {
 .id-line { font-family: ui-monospace, monospace; font-size: 11px; margin-top: 2px;
            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
 .paginator { display: flex; justify-content: flex-end; margin-top: 12px; }
+.delivery-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 12px; }
+.delivery-meta span { color: var(--la-fg-muted); margin-right: 8px; }
+.delivery-error { color: #ef4444; font-size: 12px; margin-bottom: 12px; }
+.payload-box { max-height: 360px; overflow: auto; margin: 0; padding: 12px;
+  border: 1px solid var(--la-border); border-radius: 6px; background: var(--la-bg);
+  color: var(--la-fg); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 </style>

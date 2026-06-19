@@ -8,7 +8,7 @@ import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
 import io.litealert.namespace.domain.Namespace;
 import io.litealert.namespace.domain.NamespaceStore;
-import io.litealert.notify.NotifyDispatcher;
+import io.litealert.notify.delivery.NotifyDeliveryService;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
 import io.litealert.transform.JsonSchemaService;
@@ -50,11 +50,11 @@ class WebhookServiceTest {
                 mock(IpAllowlist.class),
                 mock(RateLimiter.class),
                 mock(JsonSchemaService.class),
-                mock(NotifyDispatcher.class),
+                mock(NotifyDeliveryService.class),
                 mock(AuditLogger.class),
                 new LiteAlertProperties());
 
-        assertThatThrownBy(() -> service.handle("orders", "paid", null,
+        assertThatThrownBy(() -> service.handle("orders", "paid", null, null,
                 new ObjectMapper().createObjectNode(), "127.0.0.1"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
