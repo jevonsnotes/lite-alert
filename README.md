@@ -1,113 +1,72 @@
 # Lite-Alert
 
-> 一个无数据库化、文件加密存储、前后端一体的轻量级消息通知服务。
-> 单 JAR 启动，配置即可，docker-compose 一键部署。
+Lite-Alert 是一个前后端一体的轻量级消息通知服务。它默认使用内置 H2 文件数据库，单 JAR 即可启动；生产环境可切换 MySQL、PostgreSQL，以及兼容协议的 GaussDB、OceanBase。
 
-## 特性
+核心目标是让业务系统用一个简单的 Webhook 调用，把结构化事件转成邮件、钉钉、飞书、企业微信或通用出站 Webhook 通知，并在后台完成鉴权、校验、转换、投递和审计追踪。
 
-- **轻量**：单 JAR、无外部数据库 / 消息队列依赖
-- **安全**：数据落盘加密，敏感配置 Jasypt 包裹
-- **一体化**：Vue 3 前端打包进 Spring Boot 静态资源，单端口对外
-- **Webhook 接入**：HTTP 调用 → Schema 校验 → 报文转换（JSONPath） → 邮件通知
-- **ApiKey**：独立凭证，支持有效期、scope 授权、撤销
-- **公开 Topic**：可配置免认证 + IP 白名单，适配 GitHub / GitLab 等回调
-- **可扩展**：通知渠道以策略模式抽象，邮件之外可逐步加钉钉 / 飞书 / SMS
+## 功能特性
 
-## 文档
+- **单体交付**：Spring Boot 后端与 Vue 3 前端打包进同一个 JAR / Docker 镜像。
+- **多数据库支持**：默认 H2 文件数据库；生产可通过环境变量切换 MySQL / PostgreSQL / GaussDB / OceanBase。
+- **Webhook 接入**：按 `Namespace + Topic` 暴露接入地址，支持 JSON Schema 校验、限流、IP 白名单和 traceId 追踪。
+- **ApiKey 鉴权**：ApiKey 独立管理，支持 Topic / Namespace 授权范围、生效失效时间、撤销、轮换和调用统计；原文只在创建/轮换时展示一次。
+- **消息转换与模板**：支持 JSONPath 字段映射、Mustache 模板变量、通道专属模板，以及 Webhook 出站 JSON/XML 模板与响应断言。
+- **多通知通道**：支持 EMAIL、DINGTALK、FEISHU、WECOM、WEBHOOK。
+- **投递管理**：投递任务持久化，支持异步派发、重试、失败记录、投递详情查询和敏感 payload 权限控制。
+- **管理后台**：命名空间、Topic、ApiKey、通知目标、审计、用户、角色、系统设置等页面。
+- **安全配置**：JWT 登录、RBAC 权限、Jasypt 配置加密、敏感字段脱敏与审计日志。
 
-完整设计放在 [`docs/design`](./docs/design)：
+## 技术栈
 
-| # | 内容 |
-| --- | --- |
-| 00 | [总览](./docs/design/00-overview.md) |
-| 01 | [架构与数据流](./docs/design/01-architecture.md) |
-| 02 | [数据模型与文件存储](./docs/design/02-data-model.md) |
-| 03 | [认证与权限](./docs/design/03-auth.md) |
-| 04 | [命名空间与 Topic](./docs/design/04-namespace-topic.md) |
-| 05 | [报文转换](./docs/design/05-message-transform.md) |
-| 06 | [通知渠道与邮箱](./docs/design/06-notify-channel.md) |
-| 07 | [Webhook 接入接口](./docs/design/07-webhook-api.md) |
-| 08 | [前端页面规划](./docs/design/08-frontend.md) |
-| 09 | [部署方案](./docs/design/09-deploy.md) |
-| 10 | [实施路线图](./docs/design/10-roadmap.md) |
-| 11 | [ApiKey 管理](./docs/design/11-apikey.md) |
+- **后端**：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、JDBC、MyBatis-Flex、Flyway、Jasypt、Caffeine、Jackson。
+- **数据库**：H2（默认）、MySQL、PostgreSQL；GaussDB 使用 PostgreSQL 协议，OceanBase 使用 MySQL 协议。
+- **前端**：Vue 3、TypeScript、Vite、Element Plus、Pinia、Vue Router、Axios、ECharts。
+- **打包**：Maven 多模块，`frontend-maven-plugin` 固定 Node/npm 版本并构建前端资源。
+- **部署**：单 JAR 或 Docker Compose。
 
-## 工程结构
+## 快速启动
 
-```
-lite-alert/
-├── pom.xml                      # Maven 父 pom (Spring Boot 3.5.15, Java 17)
-├── backend/                     # Spring Boot 单模块
-│   └── src/main/...
-├── frontend/                    # Vite + Vue 3 + Element Plus
-│   └── src/...
-├── docker/
-│   ├── Dockerfile               # 多阶段：node 构建 → maven 构建 → jre 运行
-│   ├── docker-compose.yml
-│   └── .env.example
-└── docs/design/                 # 系统设计文档
-```
+### 方式一：Docker Compose（推荐）
 
-## 快速开始
+项目已提供 Docker Compose 样例文件：
 
-### 本地开发（前后端分离）
+- Compose 文件：`docker/docker-compose.yml`
+- 环境变量样例：`docker/.env.example`
 
-需要 JDK 17 + Maven 3.9+ + Node.js 20+。
+从项目根目录启动：
 
 ```bash
-# 1) 启后端（端口 8080）
-mvn -pl backend -am spring-boot:run
-
-# 2) 另开一个终端启前端（端口 5173，已配置 /api 反代到 8080）
-cd frontend
-npm install
-npm run dev
+cp docker/.env.example docker/.env
+# 编辑 docker/.env，至少修改 JASYPT_ENCRYPTOR_PASSWORD / LITE_ALERT_JWT_SECRET / LITE_ALERT_APIKEY_PEPPER
+docker compose -f docker/docker-compose.yml --env-file docker/.env up -d
 ```
 
-浏览器访问 http://localhost:5173 ，请求会代理到后端 8080。
-
-### 一体打包（前端嵌入 JAR）
-
-```bash
-cd frontend && npm install && npm run build   # 输出到 backend/src/main/resources/static
-cd ..
-mvn -pl backend -am package -DskipTests
-java -jar backend/target/lite-alert.jar
-```
-
-访问 http://localhost:8080 即是完整应用。
-
-### Docker Compose 部署
-
-#### 1. 准备环境
+也可以进入 `docker` 目录启动：
 
 ```bash
 cd docker
 cp .env.example .env
+# 编辑 .env，至少修改 JASYPT_ENCRYPTOR_PASSWORD / LITE_ALERT_JWT_SECRET / LITE_ALERT_APIKEY_PEPPER
+docker compose up -d
 ```
 
-编辑 `.env`，至少填写三个必填密钥：
+默认使用 H2 文件数据库，数据目录位于 `docker/data`。启动后访问：
 
-```ini
-JASYPT_ENCRYPTOR_PASSWORD=<your-32-char-min-secret>
-LITE_ALERT_JWT_SECRET=<your-32-char-min-secret>
-LITE_ALERT_APIKEY_PEPPER=<your-32-char-min-secret>
+```text
+http://localhost:8080
 ```
 
-#### 2. 选择数据库模式
+健康检查：
 
-数据库切换通过 `.env` 中的 `COMPOSE_PROFILES` 变量控制，无需额外命令行参数。
+```text
+GET http://localhost:8080/api/health
+```
 
-| 模式 | 配置 | 说明 |
-|------|------|------|
-| **H2**（默认） | 无需修改 | 开箱即用，数据在 `./data` |
-| **MySQL** | `COMPOSE_PROFILES=mysql` + 取消注释 MySQL 配置段 | 自动拉起 MySQL 8.0 容器 |
-| **PostgreSQL** | `COMPOSE_PROFILES=postgres` + 取消注释 PostgreSQL 配置段 | 自动拉起 PostgreSQL 16 容器 |
-| **外部数据库** | 留空 `COMPOSE_PROFILES` + 配置外部 JDBC URL | 适用于 GaussDB / OceanBase / 自建库 |
+### 切换 MySQL
 
-MySQL 示例（`.env`）：
+在 `docker/.env` 中启用 MySQL 配置：
 
-```ini
+```env
 COMPOSE_PROFILES=mysql
 LITE_ALERT_DATASOURCE_URL=jdbc:mysql://mysql:3306/lite_alert?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
 LITE_ALERT_DATASOURCE_USERNAME=root
@@ -117,59 +76,111 @@ LITE_ALERT_DATABASE_TYPE=mysql
 MYSQL_ROOT_PASSWORD=litealert
 ```
 
-#### 3. 启动
+然后执行：
 
 ```bash
 docker compose up -d
 ```
 
-Compose 会根据 `COMPOSE_PROFILES` 自动决定是否拉起 MySQL/PostgreSQL 容器。
+### 切换 PostgreSQL
 
-#### 4. 验证与访问
+在 `docker/.env` 中启用 PostgreSQL 配置：
+
+```env
+COMPOSE_PROFILES=postgres
+LITE_ALERT_DATASOURCE_URL=jdbc:postgresql://postgres:5432/lite_alert
+LITE_ALERT_DATASOURCE_USERNAME=postgres
+LITE_ALERT_DATASOURCE_PASSWORD=litealert
+LITE_ALERT_DATASOURCE_DRIVER=org.postgresql.Driver
+LITE_ALERT_DATABASE_TYPE=postgresql
+POSTGRES_PASSWORD=litealert
+```
+
+GaussDB / OceanBase 可参考 `docker/.env.example`，分别使用 PostgreSQL / MySQL 兼容 JDBC 驱动与迁移脚本。
+
+## 本地开发
+
+### 后端测试
 
 ```bash
-docker compose ps
-docker compose logs -f lite-alert
-curl http://localhost:8080/api/health
+mvn -pl backend -am test -Dskip.frontend=true
 ```
 
-浏览器打开 `http://localhost:8080`，初始管理员账号 `admin` / `admin123`。
-
-#### 5. 版本升级
-
-使用 Docker Hub 镜像升级，在 `.env` 中指定版本：
-
-```ini
-IMAGE=jevonsnotes/lite-alert:1.0.0
-```
+### 前端类型检查与构建
 
 ```bash
-docker compose down
-docker compose up -d
+cd frontend
+npm run type-check
+npm run build
 ```
 
-## 默认账号
+### 一体打包
 
-`application.yml` 内置初始管理员（仅当 `users.json` 不存在时生效）：
+```bash
+mvn -pl backend -am package
+```
 
-| 用户名 | 密码 |
-| --- | --- |
-| `admin` | `admin123`（dev profile 默认；生产部署请通过 ENC(...) 覆盖） |
+不跳过前端时，Maven 会下载固定版本的 Node/npm，执行前端安装与构建，并把产物复制到后端静态资源目录。
 
-> 首次登录后请及时修改管理员密码。
+## Webhook 调用示例
 
-## 配置项
+默认通过请求头传递 ApiKey：
 
-主要环境变量：
+```bash
+curl -X POST "http://localhost:8080/api/webhook/demo/order_paid" \
+  -H "Authorization: Bearer la_xxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":"ORD-1001","amount":99.5}'
+```
 
-| 变量 | 必填 | 说明 |
-| --- | --- | --- |
-| `JASYPT_ENCRYPTOR_PASSWORD` | 生产必填 | 解密 application.yml 中的 ENC(…) |
-| `LITE_ALERT_JWT_SECRET` | 生产必填 | JWT 签名密钥（≥ 32 字符） |
-| `LITE_ALERT_APIKEY_PEPPER` | 生产必填 | ApiKey HMAC pepper，**一旦设定不可轮换** |
-| `LITE_ALERT_DATA_DIR` | 否 | 数据目录，默认 `./data`（容器内 `/data`） |
-| `SPRING_PROFILES_ACTIVE` | 否 | 默认 `dev`，生产建议 `prod` |
+如果 Topic 配置为 `keyLocation=QUERY`，也可通过 URL 参数传递：
 
-## 许可
+```bash
+curl -X POST "http://localhost:8080/api/webhook/demo/order_paid?key=la_xxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":"ORD-1001","amount":99.5}'
+```
 
-[MIT](./LICENSE)
+成功响应为 `200 OK`，表示请求已受理、投递任务已创建；实际投递结果可在后台审计或投递记录中查看。
+
+## 主要目录
+
+```text
+lite-alert/
+├── backend/                 # Spring Boot 后端
+│   └── src/main/java/io/litealert/
+│       ├── auth/            # 登录、用户、JWT、角色与权限
+│       ├── namespace/       # 命名空间
+│       ├── topic/           # Topic、报文格式、通道模板
+│       ├── apikey/          # ApiKey 生命周期与鉴权元数据
+│       ├── notify/          # 通知目标、通知渠道、订阅、投递
+│       ├── webhook/         # Webhook 接入、鉴权、限流、白名单
+│       ├── admin/           # 系统设置、统计、审计
+│       └── common/          # 通用配置、错误、加密、数据库、工具
+├── frontend/                # Vue 3 前端
+├── docker/                  # Dockerfile、docker-compose、环境变量示例
+└── docs/design/             # 系统设计文档
+```
+
+## 设计文档
+
+- [系统设计总览](docs/design/00-overview.md)
+- [架构与数据流](docs/design/01-architecture.md)
+- [数据模型与存储](docs/design/02-data-model.md)
+- [认证与权限](docs/design/03-auth.md)
+- [命名空间与 Topic](docs/design/04-namespace-topic.md)
+- [报文转换](docs/design/05-message-transform.md)
+- [通知渠道与目标](docs/design/06-notify-channel.md)
+- [Webhook 接入接口](docs/design/07-webhook-api.md)
+- [前端页面规划](docs/design/08-frontend.md)
+- [部署方案](docs/design/09-deploy.md)
+- [实施路线图](docs/design/10-roadmap.md)
+- [ApiKey 管理](docs/design/11-apikey.md)
+
+## 安全注意事项
+
+- 生产环境必须替换 `.env` 中的三个密钥：`JASYPT_ENCRYPTOR_PASSWORD`、`LITE_ALERT_JWT_SECRET`、`LITE_ALERT_APIKEY_PEPPER`。
+- `LITE_ALERT_APIKEY_PEPPER` 变更会导致所有现存 ApiKey 失效，除非执行专门迁移或统一轮换。
+- ApiKey 原文只在创建或轮换后一次性展示，服务端不会存储，也无法再次找回。
+- URL 参数传 key 更容易进入代理日志或浏览器历史，优先使用 `Authorization` 请求头。
+- 不要在日志中打印 Webhook 原始报文和通知目标密钥。
