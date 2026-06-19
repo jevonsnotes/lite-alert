@@ -52,13 +52,6 @@ lite-alert:
     pepper: ${LITE_ALERT_APIKEY_PEPPER:dev-only-pepper-change-in-prod-please-32}
   webhook:
     max-body-size: 65536
-    public-max-body-size: 32768
-    allow-user-public-topic: false
-    rate-limit:
-      per-topic-per-minute: 60
-      per-contact-per-hour: 30
-      public-per-minute: 30
-      public-per-ip-per-minute: 10
 
 jasypt:
   encryptor:
