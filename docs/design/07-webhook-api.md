@@ -2,139 +2,139 @@
 
 ## 1. 接口定义
 
-```
+```text
 POST /api/webhook/{namespace}/{topic}
-Query (当 Topic 配置 keyLocation=QUERY):
-  ?key=<apiKey>                     必填
-Headers (当 Topic 配置 keyLocation=HEADER，默认):
+
+Headers（当 Topic 配置 keyLocation=HEADER，默认）:
   Authorization: Bearer <apiKey>    必填
-  X-Trace-Id: <optional>            可选，用于贯穿业务方与 lite-alert
   Content-Type: application/json
+
+Query（当 Topic 配置 keyLocation=QUERY）:
+  ?key=<apiKey>                     必填
+
 Body:
   <符合 topic.inboundFormat 的 JSON>
 ```
 
-### 响应
+> traceId 由服务端 `TraceIdFilter` 生成并贯穿日志、错误响应、审计与投递记录。调用方如需要自有业务流水号，建议放在业务报文字段中。
+
+## 2. 响应
 
 | 状态 | 含义 |
 | --- | --- |
-| 200 OK | 已受理，投递任务已写入数据库。返回 `{accepted, traceId, deliveryCount}` |
-| 400 Bad Request | 报文格式不合法或 Schema 校验失败，返回错误明细 |
-| 401 Unauthorized | ApiKey 缺失/无效/过期/已撤销，或 IP 不在白名单 |
+| 200 OK | 已受理，投递任务已创建。返回 `{accepted, traceId, deliveryCount}` |
+| 400 Bad Request | 报文格式不合法、JSON Schema 校验失败或模板/转换参数不合法 |
+| 401 Unauthorized | ApiKey 缺失、无效、过期、未生效、已撤销，或 IP 不在白名单 |
 | 403 Forbidden | ApiKey 有效但 scope 未覆盖此 Topic |
-| 404 Not Found | namespace / topic 不存在或处于 DRAFT |
-| 423 Locked | topic 已 DISABLED |
+| 404 Not Found | namespace / topic 不存在，或 Topic 尚未发布 |
+| 423 Locked | Topic 已禁用 |
 | 429 Too Many Requests | 限流触发 |
 | 413 Payload Too Large | 报文超过大小限制（默认 64 KB） |
-| 500 Internal Server Error | 服务端异常，含 traceId |
+| 500 Internal Server Error | 服务端异常，响应中包含 traceId |
 
-> 设计为 **fire-and-forget**：我们承诺已落审计、已把投递任务持久化到数据库，不承诺投递成功。投递结果通过审计日志/前端调用记录查询。
+`200 OK` 只表示 Lite-Alert 已完成鉴权、校验并创建投递任务；下游邮件、机器人或出站 Webhook 是否成功，要通过投递记录或审计查询。
 
-## 2. 鉴权细节
+## 3. 鉴权细节
 
-### 2.1 统一 API_KEY 认证
+### 3.1 API_KEY 认证
 
-所有 Topic 统一使用 ApiKey 认证，不再支持免认证（NONE）模式。
-
-用户可在 Topic 的「安全与接入」Tab 中选择 ApiKey 传递方式：
+标准接入方式是 ApiKey 认证。Topic 通过 `auth.keyLocation` 决定从哪里读取 key：
 
 | keyLocation | 说明 |
 | --- | --- |
 | `HEADER`（默认） | `Authorization: Bearer <apiKey>` |
 | `QUERY` | URL 参数 `?key=<apiKey>` |
 
-**注意**：URL 参数认证更容易出现在浏览器历史、代理日志、网关日志中。推荐优先使用请求头认证。
+URL 参数认证容易出现在浏览器历史、代理日志、网关日志中，仅建议在调用方无法自定义 Header 时使用。
 
-### 2.2 调用流程
+### 3.2 调用流程
 
-调用方携带 ApiKey 调用 Webhook 时，服务端按以下顺序校验：
+服务端按以下顺序处理：
 
-1. 根据 `keyLocation` 从 Header 或 Query 参数取 ApiKey；缺失 → 401
-2. 取 prefix（前 8 字符）→ 内存索引命中 ApiKey 元数据；未命中 → 401
-3. HMAC-SHA-256(serverPepper, fullKey) 与 `keyHash` 常量时间比较；不匹配 → 401
-4. 校验 `status=ACTIVE`；REVOKED → 401
-5. 校验 `validFrom ≤ now ≤ validUntil`；不在窗口 → 401（`code=EXPIRED` 或 `NOT_YET_ACTIVE`）
-6. 校验 scope 覆盖：scopes 中存在 `{type:TOPIC, id:当前Topic}` 或 `{type:NAMESPACE, id:当前namespace}`；否则 → 403
-7. 失败计数：同 IP + 同 prefix 连续 10 次失败 → 该 IP 锁 5 分钟
+1. 根据 `{namespace}/{topic}` 查找 Topic，要求已发布且命名空间可用。
+2. 按 `keyLocation` 从 Header 或 Query 参数取 ApiKey；缺失 → 401。
+3. 取 prefix → 命中 ApiKey 元数据；未命中 → 401。
+4. 使用 `LITE_ALERT_APIKEY_PEPPER` 重新计算 HMAC，与 `keyHash` 常量时间比较；不匹配 → 401。
+5. 校验 `status=ACTIVE`；撤销 → 401。
+6. 校验 `validFrom ≤ now ≤ validUntil`；未生效或过期 → 401。
+7. 校验 scope 覆盖当前 Topic 或当前 Namespace；不覆盖 → 403。
+8. 校验 IP 白名单、Topic 限流和 ApiKey 限流。
+9. JSON 解析与 `inboundFormat` Schema 校验。
+10. 为每个订阅目标创建投递任务，记录审计，更新 ApiKey 使用统计。
+11. 返回 200。
 
-错误响应区分清晰，便于业务方排查：
+错误响应示例：
 
 ```json
-{ "code": "API_KEY_EXPIRED",       "traceId": "tr_xxx", "message": "..." }
-{ "code": "API_KEY_REVOKED",       "traceId": "tr_xxx", "message": "..." }
-{ "code": "API_KEY_INVALID",       "traceId": "tr_xxx", "message": "..." }
-{ "code": "SCOPE_NOT_ALLOWED",     "traceId": "tr_xxx", "message": "ApiKey 未授权访问此 Topic" }
+{ "code": "API_KEY_EXPIRED", "traceId": "tr_xxx", "message": "ApiKey 已过期" }
+{ "code": "API_KEY_REVOKED", "traceId": "tr_xxx", "message": "ApiKey 已撤销" }
+{ "code": "API_KEY_INVALID", "traceId": "tr_xxx", "message": "ApiKey 无效" }
+{ "code": "SCOPE_NOT_ALLOWED", "traceId": "tr_xxx", "message": "ApiKey 未授权访问此 Topic" }
 ```
 
-audit 日志记录 `apiKeyId`（不记 token 原文），并记录 `keyLocation` 值。
+审计只记录 `apiKeyId`、prefix、keyLocation 等元数据，不记录 ApiKey 原文。
 
-### 2.3 调用方示例
+## 4. 调用方示例
 
-**请求头模式（默认）**：
+### 请求头模式（默认）
 
 ```bash
-curl -X POST "http://host/api/webhook/ns/topic" \
+curl -X POST "http://host:8080/api/webhook/order/order_paid" \
   -H "Authorization: Bearer la_xxxxxx..." \
   -H "Content-Type: application/json" \
-  -d '{"title": "告警"}'
+  -d '{"orderId":"ORD-1001","amount":99.5}'
 ```
 
-**URL 参数模式**：
+### URL 参数模式
 
 ```bash
-curl -X POST "http://host/api/webhook/ns/topic?key=la_xxxxxx..." \
+curl -X POST "http://host:8080/api/webhook/order/order_paid?key=la_xxxxxx..." \
   -H "Content-Type: application/json" \
-  -d '{"title": "告警"}'
+  -d '{"orderId":"ORD-1001","amount":99.5}'
 ```
 
-## 3. 报文校验链
+## 5. 报文校验链
 
-```
+```text
 原始 body
-  └─ 大小限制 (默认 64 KB)
+  └─ 大小限制（默认 64 KB）
       └─ JSON 解析
-          └─ Schema 校验 (inboundFormat)
-              └─ 业务校验（如 namespace.enabled）
-                  └─ 写入投递任务 + 进入派发
+          └─ JSON Schema 校验（topic.inboundFormat）
+              └─ 创建 NotifyDelivery 任务
+                  └─ 后台 worker 渲染模板并投递
 ```
 
-## 4. 幂等性（可选）
+## 6. 接入文档自动生成
 
-- 如果调用方携带 `X-Idempotency-Key`，服务端会用 LRU(10000) 缓存 5 分钟去重
-- 命中 → 返回上次的 traceId，幂等 200
-- 缓存只在内存，重启失效
+Topic 详情页应根据当前配置自动生成：
 
-## 5. 调用方文档自动生成
+- cURL 示例：根据 `keyLocation` 切换 Header / Query。
+- JSON Schema 与字段说明。
+- 模板变量说明。
+- 覆盖当前 Topic 的 ApiKey 列表。
+- Webhook 成功响应与常见错误码说明。
 
-- 「Topic 详情 - 接入文档」页：实时生成
-  - cURL 示例：根据当前 Topic 的 `keyLocation` 自动切换 Header / URL 参数格式
-  - JSON Schema
-  - 字段表（从 schema 提取）
-  - 一份转换后的样例输出
-- 提供「复制」按钮，方便分享给业务侧
-- 顶部有 ApiKey 选择器：列出当前用户名下、scope 已覆盖此 Topic 的 ApiKey；选中后 cURL 实时刷新
-
-## 6. 接口代码风格（Controller）
+## 7. Controller 契约
 
 ```java
 @RestController
 @RequestMapping("/api/webhook")
 public class WebhookController {
 
-    @PostMapping("/{ns}/{topic}")
+    @PostMapping("/{namespace}/{topic}")
     public ResponseEntity<Map<String, Object>> receive(
-            @PathVariable String ns,
+            @PathVariable String namespace,
             @PathVariable String topic,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(value = "key", required = false) String queryKey,
             @RequestBody(required = false) JsonNode body,
-            HttpServletRequest req) {
+            HttpServletRequest request) {
 
         Map<String, Object> ack = webhookService.handle(
-                ns, topic, authorization, queryKey, body, clientIp(req));
+                namespace, topic, authorization, queryKey, body, clientIp(request));
         return ResponseEntity.ok(ack);
     }
 }
 ```
 
-业务异常 → 由 `@ControllerAdvice` 统一翻译为标准错误体。
+业务异常由统一异常处理器转换为标准错误体。

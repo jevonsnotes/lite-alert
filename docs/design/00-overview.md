@@ -1,80 +1,88 @@
 # Lite-Alert 系统设计 · 总览
 
-> 一个无数据库化、文件加密存储、前后端一体的轻量级消息通知服务。
+> 一个默认内置 H2、可切换外部数据库、前后端一体的轻量级消息通知服务。
 
 ## 1. 设计目标
 
 | 目标 | 说明 |
 | --- | --- |
-| 轻量 | 单 JAR 启动、无外部 DB / MQ 依赖 |
-| 安全 | 数据落盘加密，配置敏感项 Jasypt 加密 |
-| 一体化 | Vue3 前端打包进 Spring Boot 静态资源，单端口对外 |
-| 可扩展 | 通知渠道(邮件/钉钉/飞书/短信)以策略模式抽象，预留扩展点 |
-| 易部署 | 单 docker-compose 文件，一条命令起服务 |
+| 轻量 | 单 JAR / 单容器启动，默认 H2 文件数据库，开箱即用 |
+| 可生产化 | 生产环境可切换 MySQL / PostgreSQL / GaussDB / OceanBase，使用 Flyway 管理数据库结构 |
+| 安全 | JWT 登录、RBAC 权限、ApiKey 只存哈希、敏感配置与字段加密、日志脱敏 |
+| 一体化 | Vue 3 前端打包进 Spring Boot 静态资源，单端口对外 |
+| 可扩展 | 通知渠道以策略模式抽象，支持 EMAIL / DINGTALK / FEISHU / WECOM / WEBHOOK |
+| 可观测 | 健康检查、审计日志、投递记录、统计看板、traceId 贯穿 |
 
 ## 2. 技术栈
 
-- **后端**：Spring Boot 3.x + Java 17 + Spring Mail + Jasypt + Caffeine（内存索引）
-- **前端**：Vue 3 + Vite + Element Plus + Pinia + Vue Router
-- **打包**：Maven 多模块，前端构建产物拷贝到 `backend/src/main/resources/static`
-- **运行**：单 JAR + 数据卷挂载，docker-compose 启动
+- **后端**：Spring Boot 3.5 + Java 17 + Spring Security + Spring Validation + Spring Mail + JDBC + MyBatis-Flex + Flyway + Jasypt + Caffeine + Jackson。
+- **前端**：Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router + Axios + ECharts。
+- **数据库**：默认 H2 文件数据库；生产支持 MySQL、PostgreSQL，GaussDB 使用 PostgreSQL 兼容模式，OceanBase 使用 MySQL 兼容模式。
+- **打包**：Maven 多模块，`frontend-maven-plugin` 固定 Node/npm 版本，前端构建产物进入后端 classpath。
+- **运行**：单 JAR、本地 Docker 镜像或 Docker Hub 镜像，docker-compose 可按 profile 启动外部数据库。
 
 ## 3. 模块划分
 
-```
+```text
 lite-alert/
-├── frontend/                # Vue3 + Element Plus
-├── backend/                 # Spring Boot 3
-│   ├── auth/                # 登录、用户、JWT
-│   ├── namespace/           # 命名空间
-│   ├── topic/               # Topic / 报文格式 / 转换规则 / Webhook
-│   ├── notify/              # 通知渠道(邮件 / 钉钉 / 飞书 / 企业微信)、通知目标
-│   ├── storage/             # 文件存储 + 加密 + 索引
-│   ├── transform/           # JSONPath 转换引擎
-│   └── common/              # 配置、异常、过滤器
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml
-└── docs/design/             # 本设计文档
+├── frontend/                # Vue3 + Element Plus 管理后台
+├── backend/                 # Spring Boot 3 后端
+│   └── src/main/java/io/litealert/
+│       ├── auth/            # 登录、用户、JWT、角色、权限
+│       ├── namespace/       # 命名空间
+│       ├── topic/           # Topic / 报文格式 / 通道模板
+│       ├── apikey/          # ApiKey 生命周期与调用方鉴权元数据
+│       ├── notify/          # 通知目标、渠道、订阅、投递任务
+│       ├── webhook/         # Webhook 接入、鉴权、限流、白名单
+│       ├── admin/           # 系统设置、统计、审计入口
+│       └── common/          # 配置、异常、加密、数据库、工具
+├── docker/                  # Dockerfile、docker-compose、.env.example
+└── docs/design/             # 系统设计文档
 ```
 
 ## 4. 文档索引
 
 | # | 文件 | 内容 |
 | --- | --- | --- |
-| 01 | [架构与数据流](./01-architecture.md) | 模块边界、请求时序、Webhook 链路 |
-| 02 | [数据模型与文件存储](./02-data-model.md) | 实体定义、文件布局、Jasypt 加密策略 |
-| 03 | [认证与权限](./03-auth.md) | 管理员/普通用户、密码加密、JWT、RBAC |
-| 04 | [命名空间与 Topic](./04-namespace-topic.md) | 唯一性约束、状态机、报文格式定义 |
-| 05 | [报文转换](./05-message-transform.md) | JSONPath 字段映射表的语义与执行 |
-| 06 | [通知渠道与目标](./06-notify-channel.md) | 渠道抽象、通知目标、Topic 关联订阅 |
-| 07 | [Webhook 接入接口](./07-webhook-api.md) | Webhook 鉴权、报文校验、调用契约 |
+| 01 | [架构与数据流](./01-architecture.md) | 模块边界、请求时序、Webhook 与投递链路 |
+| 02 | [数据模型与存储](./02-data-model.md) | 实体定义、数据库支持、加密策略、文件辅助存储 |
+| 03 | [认证与权限](./03-auth.md) | 登录、JWT、用户、角色、RBAC 权限矩阵 |
+| 04 | [命名空间与 Topic](./04-namespace-topic.md) | 唯一性约束、状态机、通道模板、安全接入 |
+| 05 | [报文转换](./05-message-transform.md) | JSONPath 映射、Webhook 出站模板、响应断言 |
+| 06 | [通知渠道与目标](./06-notify-channel.md) | 通道抽象、通知目标、订阅、投递任务 |
+| 07 | [Webhook 接入接口](./07-webhook-api.md) | 调用方鉴权、报文校验、响应契约 |
 | 08 | [前端页面规划](./08-frontend.md) | 页面结构、路由、关键交互 |
-| 09 | [部署方案](./09-deploy.md) | Dockerfile、docker-compose、配置项 |
-| 10 | [实施路线图](./10-roadmap.md) | 里程碑与开发顺序建议 |
-| 11 | [ApiKey 管理](./11-apikey.md) | 独立的 ApiKey 模块、scope 授权、有效期、调用鉴权流程 |
+| 09 | [部署方案](./09-deploy.md) | Dockerfile、docker-compose、数据库切换、配置项 |
+| 10 | [实施路线图](./10-roadmap.md) | 已完成能力、后续规划与风险 |
+| 11 | [ApiKey 管理](./11-apikey.md) | ApiKey、scope、有效期、轮换、限流 |
 
 ## 5. 核心概念关系图
 
-```
+```text
 User ──owns──▶ Namespace ──contains──▶ Topic ──subscribes──▶ NotifyTarget(s)
-     │                                    │                    (EMAIL / DINGTALK / FEISHU / WECOM)
-     │                                    ├── inboundFormat (JSON Schema)
-     │                                    ├── transformRule (JSONPath 映射，可选)
-     │                                    └── auth.mode  (API_KEY / NONE)
-     │
-     └─owns──▶ ApiKey ──scopes──▶ Namespace[*] / Topic[*]
-                  │
-                  └── validFrom / validUntil(可永久) / status
+ │                                   │                    EMAIL / DINGTALK / FEISHU / WECOM / WEBHOOK
+ │                                   ├── inboundFormat(JSON Schema)
+ │                                   ├── auth.mode / keyLocation / rateLimit / ipWhitelist
+ │                                   └── templates[NotifyTarget.Type]
+ │                                           ├── subject/body
+ │                                           ├── transform(JSONPath mappings)
+ │                                           ├── outputTemplate / outputXmlTemplate
+ │                                           └── responseCheck(WEBHOOK)
+ │
+ └─owns──▶ ApiKey ──scopes──▶ Namespace[*] / Topic[*]
+              ├── validFrom / validUntil / status
+              ├── prefix / keyHash(不存原文)
+              └── rotateCount / usageCount / rateLimitPerMinute
 
-调用方 ──HTTP POST  Authorization: Bearer <apiKey>──▶ /api/webhook/{ns}/{topic}
-                       ──ApiKey 校验 + scope 校验 + 报文校验/转换──▶
-                       NotifyChannel ──▶ 订阅的通知目标
+Caller ──HTTP POST + ApiKey──▶ /api/webhook/{namespace}/{topic}
+         └─▶ ApiKey 校验 + scope 校验 + Schema 校验 + 转换/模板
+             └─▶ NotifyDelivery 持久化任务 ──▶ NotifyChannel 异步投递
 ```
 
 ## 6. 非功能性约束
 
-- 单实例运行，不考虑分布式一致性（如未来要扩展，预留 Redis/外部存储抽象口）
-- 数据文件以 namespace 维度切分，避免单文件过大
-- 所有写入采用 "临时文件 + 原子 rename" 防止崩溃半写
-- 日志默认不打印任何报文 body，敏感字段全程脱敏
+- 数据持久化以数据库为准，默认 H2 文件数据库；复杂业务字段以 JSON 文本存储，兼容多数据库。
+- 文件存储能力仍保留在 `common.storage.FileStore`，用于兼容辅助文件、导入导出或未来迁移场景，不再作为核心业务数据的唯一持久化方案。
+- 单实例部署为主，不引入外部 MQ；投递任务通过数据库持久化与后台 worker 处理。
+- 日志默认不打印原始报文、ApiKey 原文、通知目标密钥等敏感信息。
+- ApiKey 原文只允许创建或轮换后一次性返回，服务端不得存储或再次展示。

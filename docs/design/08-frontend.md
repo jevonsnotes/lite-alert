@@ -2,102 +2,117 @@
 
 ## 1. 技术选型
 
-- Vue 3 + `<script setup>` + TypeScript
-- Vite 构建，输出到 `backend/src/main/resources/static`
-- Element Plus 全量按需引入（unplugin-auto-import）
-- Pinia 管理用户状态、命名空间缓存
-- Vue Router，全局守卫做登录校验
-- axios 封装，自动注入 JWT、统一错误提示
-- monaco editor（仅在 Schema/转换页面懒加载）
+- Vue 3 + `<script setup lang="ts">` + TypeScript。
+- Vite 构建，Maven 打包时输出并复制到后端静态资源。
+- Element Plus 组件库。
+- Pinia 管理登录态、主题偏好等状态。
+- Vue Router，全局守卫做登录与权限校验。
+- Axios 封装在 `frontend/src/http`，统一 `/api` 前缀、JWT 注入和错误提示。
+- ECharts 用于 Dashboard 统计图表。
+
+> 当前依赖中未包含 monaco editor，JSON Schema / 模板编辑以现有组件实现；如后续需要源码编辑增强，再引入懒加载编辑器。
 
 ## 2. 路由结构
 
-```
+```text
 /login                     登录页
-/                          需登录
-├── /dashboard             首页：我的命名空间数 / Topic 数 / 今日通知数 / 失败数
-├── /namespaces            命名空间列表 + 新建
-│   └── /:nsId             命名空间详情（其下 Topic 列表）
-├── /topics/:id            Topic 详情（多 Tab：基础信息 / 报文格式 / 转换 / 模板 / 订阅 / 安全与接入 / 调用记录）
-├── /apikeys               ApiKey 管理（新建 / 编辑 scope / 撤销 / 删除）
-├── /contacts              通知目标（邮件 / 钉钉 / 飞书 / 企业微信）
+/                          需登录，AppLayout
+├── /dashboard             首页统计看板
+├── /namespaces            命名空间列表与创建
+├── /topics/:id            Topic 详情
+├── /apikeys               ApiKey 管理
+├── /contacts              通知目标
+├── /audit                 审计日志查询
 ├── /admin/users           ADMIN: 用户管理
-├── /admin/system          ADMIN: 系统设置（SMTP、限流、密钥重置）
-└── /audit                 审计日志查询
+├── /admin/roles           ROLE_VIEW: 角色管理
+└── /admin/system          ADMIN: 系统设置
 ```
+
+路由守卫规则：
+
+- 未登录访问非公开页面 → 跳转 `/login`。
+- `meta.adminOnly` 页面要求管理员。
+- `meta.permission` 页面要求当前用户拥有对应权限。
 
 ## 3. 关键页面交互
 
 ### 3.1 登录
-- 失败给明确提示：账号/密码错误 vs 锁定中
-- 「记住我」= 把 token 存 localStorage（默认 sessionStorage）
 
-### 3.2 命名空间列表
-- 表格：name / 描述 / Topic 数 / 创建时间 / 操作
-- 新建对话框：输入 name 时实时校验正则
-- 删除前 confirm：列出该命名空间下的 Topic 数
+- 登录成功后保存 JWT 与用户信息。
+- 登录失败给出明确提示。
+- 访问受保护页面时带 `redirect` 参数，登录后返回原页面。
 
-### 3.3 Topic 详情（最复杂）
-Tab 设计：
+### 3.2 Dashboard
+
+展示系统概览：
+
+- 命名空间数、Topic 数、今日调用量、失败数。
+- 调用趋势图。
+- Topic 或通知目标排行。
+
+### 3.3 命名空间
+
+- 表格展示 name、描述、状态、Topic 数、创建时间。
+- 新建时实时校验命名规则。
+- 删除或禁用前二次确认。
+
+### 3.4 Topic 详情
+
+建议 Tab：
 
 | Tab | 功能 |
 | --- | --- |
-| 基础信息 | name / status / 描述 / 发布按钮 |
-| 报文格式 | JSON Schema 编辑（可视化 + 源码切换），保存即校验 |
-| 报文转换 | 三栏：左示例报文、中映射表、右目标报文预览（500ms 节流 dryRun） |
-| 通知模板 | subject / body 模板编辑，右侧预览 |
-| 订阅 | 当前用户 NotifyTarget 列表 + 复选框，保存触发 PUT |
-| 安全与接入 | **鉴权模式**(API_KEY/NONE 切换) / **IP 白名单** / **限流** / 关联 ApiKey 列表 / cURL 示例 |
-| 调用记录 | 表格分页，点击行展开看 payload + 通知结果 + 所用 ApiKey |
+| 基础信息 | name、description、status、发布/禁用/启用 |
+| 报文格式 | JSON Schema 编辑与校验 |
+| 通道模板 | 按 EMAIL / DINGTALK / FEISHU / WECOM / WEBHOOK 配置 subject、body、出站模板 |
+| 报文转换 | JSONPath mapping 表、示例报文、dry-run 输出 |
+| 订阅 | 勾选当前用户通知目标并保存 |
+| 安全与接入 | keyLocation、IP 白名单、限流、覆盖当前 Topic 的 ApiKey、cURL 示例 |
+| 调用/投递记录 | 展示 traceId、状态、目标、失败原因、payload 权限控制 |
 
-#### 「安全与接入」Tab 关键交互
+### 3.5 ApiKey 管理
 
-- **鉴权模式**：单选 API_KEY / NONE
-  - 切换到 NONE 时弹确认：「此 Topic 将公开可调用，强烈建议配合 IP 白名单」
-  - 普通 USER 若未开启权限，NONE 选项置灰并提示
-- **关联 ApiKey 列表**（仅 API_KEY 模式可见）：
-  - 列出当前用户名下、scope 覆盖本 Topic 的 ApiKey（含按命名空间间接覆盖）
-  - 每行显示 名称 / 前缀 / 有效期 / 状态 / 「撤销」按钮
-  - 顶部「+ 新建 ApiKey 并授权此 Topic」直接跳转 `/apikeys` 并预填 scope
-  - 没有任何关联 ApiKey 时显示空态 + 引导
-- **IP 白名单**：CIDR 输入，每行一条，前端做格式校验
-- **cURL 示例**：实时根据当前模式 + 选中的 ApiKey 渲染（API_KEY 模式带 `Authorization: Bearer ...`，NONE 模式不带）
+- 列表：名称、prefix、授权范围、有效期、状态、最近使用、使用次数、限流、操作。
+- 新建：名称、生效/失效时间、授权范围、限流配置。
+- 创建成功：完整 key 只展示一次，关闭后不可再查看。
+- 轮换：`POST /api/apikeys/{id}/rotate`，返回新 key，旧 key 立即失效或按后端策略替换。
+- 撤销 / 删除：二次确认。
 
-### 3.4 通知目标
-- 类型选择卡片：邮件 / 钉钉 / 飞书 / 企业微信群机器人
-- label / 地址脱敏展示（邮箱 `a***@b.com`、Webhook URL 显示 host + 末尾 6 位）
-- 不同类型显示不同 placeholder 与可选 secret 字段（DingTalk 加签）
-- 「测试发送」按钮（M8 后续），结果以 toast 反馈
+### 3.6 通知目标
 
-### 3.5 ApiKey 管理（详见文档 11 §8）
-- 列表：名称 / Key 前缀 `la_8f3a••••••••` / 授权范围气泡 / 有效期 / 状态 / 最近使用 / 操作
-- 新建对话框：名称、生效/失效时间（含「永久有效」复选框）、授权范围（按命名空间穿梭框 + 按 Topic 树形多选）
-- 提交后：**只展示一次**完整 key 弹窗，含「复制」「我已保存」按钮，关闭即不可再看
-- 撤销 / 删除二次确认；状态影响按钮可用性
+- 类型卡片：邮件、钉钉、飞书、企业微信、通用 Webhook。
+- endpoint 脱敏展示。
+- secret 只允许写入/更新，不回显明文。
+- 不同类型展示不同输入提示。
 
-### 3.6 用户管理（ADMIN）
-- 新建用户：用户名 + 一次性密码（系统生成或手动输入），生成后弹窗只展示一次
-- 启用 / 禁用 / 重置密码 / 删除
+### 3.7 用户与角色管理
+
+- 用户管理：创建、启用/禁用、重置密码、删除。
+- 角色管理：查看权限列表、创建角色、编辑权限、删除非内置角色。
+- 角色页面入口需要 `ROLE_VIEW` 权限。
+
+### 3.8 系统设置
+
+- SMTP 配置查看/保存/删除。
+- SMTP 测试发送。
+- 系统限流、安全开关等设置。
+- 高风险变更需要二次确认。
 
 ## 4. 通用组件
 
-- `<JsonEditor>`：基于 monaco，封装 Schema 校验、错误下划线
-- `<JsonPathInput>`：带补全的 JSONPath 输入
-- `<MaskedText>`：自动脱敏的文本组件
-- `<Confirmable>`：危险操作二次确认弹窗
+| 组件 | 用途 |
+| --- | --- |
+| JSON 编辑/校验组件 | 编辑 inboundFormat、示例报文、Webhook 模板 |
+| JsonPath 输入 | 编辑 transform mapping 的 `from` 字段 |
+| MaskedText | 展示脱敏 endpoint、prefix 等 |
+| Confirmable | 危险操作二次确认 |
+| PermissionGate | 根据权限控制按钮或页面块展示 |
 
-## 5. 样式与设计感
+## 5. 与后端的契约
 
-- 主色：以 `#3D7CFF` 为主，避免默认蓝调过强
-- 暗色模式：Element Plus 自带 + 用户偏好持久化
-- 表格密度：默认紧凑，长列表更友好
-
-## 6. 与后端的契约
-
-- 全部通过 axios 实例 `http`，baseURL = `/api`
-- 响应统一形态：
-  ```json
-  { "code": "OK", "data": ... }
-  { "code": "INVALID_PAYLOAD", "message": "...", "errors": [...] }
-  ```
-- 401 → 自动跳登录；403 → 全局 toast；5xx → 带 traceId 的 toast，可点击复制
+- 全部通过 `frontend/src/http` 的 Axios 实例访问。
+- baseURL 保持 `/api`。
+- 401：清理登录态并跳转登录。
+- 403：提示无权限。
+- 5xx：展示 traceId，方便排查。
+- 涉及 ApiKey、secret、payload 的页面必须遵守后端脱敏与权限规则。
