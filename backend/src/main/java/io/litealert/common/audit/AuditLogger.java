@@ -35,10 +35,15 @@ public class AuditLogger {
         try {
             Map<String, Object> clean = new LinkedHashMap<>();
             String actor = null;
+            String traceId = TraceIdHolder.current();
             if (attrs != null) {
                 for (var e : attrs.entrySet()) {
                     String k = e.getKey();
-                    if ("ts".equals(k) || "type".equals(k) || "traceId".equals(k)) continue;
+                    if ("ts".equals(k) || "type".equals(k)) continue;
+                    if ("traceId".equals(k)) {
+                        if (traceId == null && e.getValue() != null) traceId = String.valueOf(e.getValue());
+                        continue;
+                    }
                     if ("actor".equals(k) && e.getValue() != null) actor = String.valueOf(e.getValue());
                     clean.put(k, e.getValue());
                 }
@@ -47,7 +52,7 @@ public class AuditLogger {
                     Timestamp.from(Instant.now()),
                     type,
                     actor,
-                    TraceIdHolder.current(),
+                    traceId,
                     json.write(clean));
         } catch (Exception e) {
             log.warn("audit write failed: type={}", type, e);
