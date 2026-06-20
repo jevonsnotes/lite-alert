@@ -7,6 +7,7 @@ import io.litealert.common.error.ErrorCode;
 import io.litealert.common.util.IdGenerator;
 import io.litealert.namespace.domain.Namespace;
 import io.litealert.namespace.domain.NamespaceStore;
+import io.litealert.notify.domain.SubscriptionStore;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class NamespaceService {
 
     private final NamespaceStore store;
     private final TopicStore topicStore;
+    private final SubscriptionStore subscriptionStore;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
 
@@ -67,11 +69,78 @@ public class NamespaceService {
     }
 
     public Namespace updateDescription(String id, String description) {
+        return update(id, null, description);
+    }
+
+    public Namespace update(String id, String name, String description) {
         Namespace n = getOrThrow(id);
-        n.setDescription(description);
+        boolean renamed = name != null && !name.equals(n.getName());
+        if (renamed) {
+            validateName(name);
+            store.findByName(name)
+                    .filter(existing -> !existing.getId().equals(id))
+                    .ifPresent(existing -> { throw new BusinessException(ErrorCode.NAMESPACE_NAME_TAKEN); });
+            String oldName = n.getName();
+            n.setName(name);
+            for (Topic t : topicStore.findByNamespace(id)) {
+                t.setNamespaceName(name);
+                t.setUpdatedAt(Instant.now());
+                topicStore.save(t);
+            }
+            audit.log("namespace.rename", Map.of(
+                    "actor", currentUser.idOrThrow(),
+                    "namespaceId", id,
+                    "oldName", oldName,
+                    "name", name));
+        }
+        if (description != null) n.setDescription(description);
         n.setUpdatedAt(Instant.now());
         store.save(n);
         return n;
+    }
+
+    public Namespace copy(String id, String name, String description, boolean copyAsDraft) {
+        Namespace source = getOrThrow(id);
+        validateName(name);
+        if (store.findByName(name).isPresent()) {
+            throw new BusinessException(ErrorCode.NAMESPACE_NAME_TAKEN);
+        }
+        Namespace copied = Namespace.builder()
+                .id(IdGenerator.namespaceId())
+                .name(name)
+                .description(description)
+                .ownerId(currentUser.idOrThrow())
+                .status(Namespace.Status.ACTIVE)
+                .createdAt(Instant.now())
+                .build();
+        store.save(copied);
+        for (Topic sourceTopic : topicStore.findByNamespace(source.getId())) {
+            Topic copiedTopic = sourceTopic.toBuilder()
+                    .id(IdGenerator.topicId())
+                    .namespaceId(copied.getId())
+                    .namespaceName(copied.getName())
+                    .ownerId(copied.getOwnerId())
+                    .status(copyAsDraft ? Topic.Status.DRAFT : sourceTopic.getStatus())
+                    .createdAt(Instant.now())
+                    .updatedAt(null)
+                    .publishedAt(copyAsDraft ? null : sourceTopic.getPublishedAt())
+                    .build();
+            topicStore.save(copiedTopic);
+            subscriptionStore.save(copiedTopic.getId(), subscriptionStore.getOrEmpty(sourceTopic.getId()).getContactIds());
+        }
+        audit.log("namespace.copy", Map.of(
+                "actor", currentUser.idOrThrow(),
+                "sourceNamespaceId", id,
+                "namespaceId", copied.getId(),
+                "name", copied.getName()));
+        return copied;
+    }
+
+    private void validateName(String name) {
+        if (name == null || !NAME_RE.matcher(name).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_ARGUMENT,
+                    "namespace name must match " + NAME_RE.pattern());
+        }
     }
 
     public Namespace disable(String id) {

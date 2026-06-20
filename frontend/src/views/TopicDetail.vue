@@ -63,6 +63,7 @@ const route = useRoute()
 const router = useRouter()
 
 const topic = ref<Topic | null>(null)
+const originalTopicName = ref('')
 const topicDefaultLimit = ref(60)
 const isNew = computed(() => route.params.id === '__new__' || route.params.id === '__create__')
 const tabName = ref('basic')
@@ -442,6 +443,7 @@ watch(tabName, async value => {
 async function loadTopic() {
   if (isNew.value) return
   topic.value = await get<Topic>(`/topics/${route.params.id}`)
+  originalTopicName.value = topic.value.name
   try {
     const settings = await get<Settings>('/admin/settings')
     topicDefaultLimit.value = settings.rateLimit?.perTopicPerMinute ?? 60
@@ -495,6 +497,25 @@ async function createTopic() {
   })
   ElMessage.success('已创建（DRAFT）')
   router.replace({ name: 'topic-detail', params: { id: created.id } })
+}
+
+async function saveBasic() {
+  if (!topic.value) return
+  const nameChanged = topic.value.name !== originalTopicName.value
+  if (nameChanged) {
+    await ElMessageBox.confirm(
+      'Topic 名称会影响 Webhook URL，且仅草稿状态可修改。确认保存？',
+      '修改 Topic 名称',
+      { type: 'warning' }
+    )
+  }
+  const updated = await patch<Topic>(`/topics/${topic.value.id}`, {
+    name: topic.value.name,
+    description: topic.value.description
+  })
+  topic.value = updated
+  originalTopicName.value = updated.name
+  ElMessage.success('已保存')
 }
 
 async function saveSchema() {
@@ -654,9 +675,16 @@ const SUBSCRIBED_CHANNELS = computed(() => {
       <el-tab-pane label="基础信息" name="basic">
         <el-form label-width="120px" class="form">
           <el-form-item label="ID"><el-input :model-value="topic.id" readonly /></el-form-item>
+          <el-form-item label="Topic 名称" required>
+            <el-input v-model="topic.name" :disabled="topic.status !== 'DRAFT'"
+                      placeholder="3-32 字符，字母开头，可含数字 / _ / -" />
+            <div class="muted">名称影响 Webhook URL；发布或禁用后不可修改。</div>
+          </el-form-item>
           <el-form-item label="描述">
-            <el-input v-model="topic.description" type="textarea" :rows="2"
-                      @change="async () => topic && (await patch(`/topics/${topic.id}`, { description: topic.description }))" />
+            <el-input v-model="topic.description" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="saveBasic">保存基础信息</el-button>
           </el-form-item>
           <el-form-item label="创建时间">
             <span class="muted">{{ formatDateTime(topic.createdAt) }}</span>

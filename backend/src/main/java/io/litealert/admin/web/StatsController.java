@@ -3,8 +3,12 @@ package io.litealert.admin.web;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.litealert.admin.settings.SystemSettings;
 import io.litealert.admin.settings.SystemSettingsService;
+import io.litealert.apikey.domain.ApiKey;
+import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.auth.CurrentUser;
 import io.litealert.common.db.DbJson;
+import io.litealert.topic.domain.Topic;
+import io.litealert.topic.domain.TopicStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +35,8 @@ public class StatsController {
     private final SystemSettingsService settingsService;
     private final JdbcTemplate jdbc;
     private final DbJson json;
+    private final TopicStore topicStore;
+    private final ApiKeyStore apiKeyStore;
 
     @GetMapping("/daily")
     public Map<String, Object> daily(
@@ -71,22 +77,27 @@ public class StatsController {
             @RequestParam(required = false) Integer value,
             @RequestParam(required = false) String unit,
             @RequestParam(required = false, defaultValue = "TOPIC") String dimension,
-            @RequestParam(required = false, defaultValue = "10") Integer limit) {
+            @RequestParam(required = false, defaultValue = "10") Integer limit,
+            @RequestParam(required = false) String topicId,
+            @RequestParam(required = false) String apiKeyId) {
 
         currentUser.requireAdmin();
 
         Dimension dim = resolveDimension(dimension);
         if (dim == Dimension.OVERALL) dim = Dimension.TOPIC;
         Window window = window(value, unit);
+        String selectedId = selectedRankingId(dim, topicId, apiKeyId);
         Map<String, Counters> counters = new HashMap<>();
+        if (selectedId != null) counters.put(selectedId, new Counters());
         for (Map<String, Object> obj : auditRows(window)) {
             Object key = dim == Dimension.TOPIC ? obj.get("topicId") : obj.get("apiKeyId");
             if (!(key instanceof String s) || s.isBlank()) continue;
+            if (selectedId != null && !selectedId.equals(s)) continue;
             Counters c = counters.computeIfAbsent(s, ignored -> new Counters());
             add(c, (String) obj.get("type"));
         }
 
-        int cap = Math.max(1, Math.min(limit == null ? 10 : limit, 50));
+        int cap = selectedId == null ? Math.max(1, Math.min(limit == null ? 10 : limit, 50)) : 1;
         List<Map.Entry<String, Counters>> top = counters.entrySet().stream()
                 .sorted(Comparator.<Map.Entry<String, Counters>>comparingLong(e -> e.getValue().accepted).reversed()
                         .thenComparing(Map.Entry::getKey))
@@ -94,14 +105,48 @@ public class StatsController {
                 .toList();
 
         Map<String, Object> r = new LinkedHashMap<>();
+        Dimension labelDimension = dim;
         r.put("dimension", dim.name());
         r.put("from", window.from().toString());
         r.put("to", window.today().toString());
-        r.put("labels", top.stream().map(Map.Entry::getKey).toList());
+        r.put("labels", top.stream().map(e -> labelFor(labelDimension, e.getKey())).toList());
         r.put("accepted", top.stream().map(e -> e.getValue().accepted).toList());
         r.put("sent", top.stream().map(e -> e.getValue().sent).toList());
         r.put("failed", top.stream().map(e -> e.getValue().failed).toList());
         return r;
+    }
+
+    private String selectedRankingId(Dimension dimension, String topicId, String apiKeyId) {
+        String raw = dimension == Dimension.TOPIC ? topicId : apiKeyId;
+        return raw == null || raw.isBlank() ? null : raw;
+    }
+
+    private String labelFor(Dimension dimension, String id) {
+        if (dimension == Dimension.TOPIC) {
+            return topicStore.findById(id)
+                    .map(this::topicLabel)
+                    .orElse(id);
+        }
+        if (dimension == Dimension.APIKEY) {
+            return apiKeyStore.findById(id)
+                    .map(this::apiKeyLabel)
+                    .orElse(id);
+        }
+        return id;
+    }
+
+    private String apiKeyLabel(ApiKey apiKey) {
+        String name = apiKey.getName();
+        String prefix = apiKey.getPrefix();
+        if (name == null || name.isBlank()) return prefix == null || prefix.isBlank() ? apiKey.getId() : prefix + "••••";
+        if (prefix == null || prefix.isBlank()) return name;
+        return name + " (" + prefix + "••••)";
+    }
+
+    private String topicLabel(Topic topic) {
+        String namespace = topic.getNamespaceName();
+        if (namespace == null || namespace.isBlank()) return topic.getName();
+        return namespace + "/" + topic.getName();
     }
 
     private List<Map<String, Object>> auditRows(Window window) {

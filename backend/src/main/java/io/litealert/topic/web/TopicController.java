@@ -2,6 +2,8 @@ package io.litealert.topic.web;
 
 import io.litealert.topic.TopicService;
 import io.litealert.topic.domain.Topic;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,6 +48,12 @@ public class TopicController {
         return service.update(id, req);
     }
 
+    @PostMapping("/{id}/copy")
+    public Topic copy(@PathVariable String id,
+                      @RequestBody CopyRequest req) {
+        return service.copy(id, req.name(), req.description(), req.copyAsDraft());
+    }
+
     @PostMapping("/{id}/publish")
     public Topic publish(@PathVariable String id) {
         return service.publish(id);
@@ -66,4 +74,6 @@ public class TopicController {
         service.delete(id);
         return Map.of("status", "deleted");
     }
+
+    public record CopyRequest(@NotBlank String name, @Size(max = 200) String description, boolean copyAsDraft) {}
 }

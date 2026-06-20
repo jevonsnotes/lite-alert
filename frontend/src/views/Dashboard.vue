@@ -64,16 +64,24 @@ const trendValue = ref(14)
 const trendUnit = ref<Unit>('DAYS')
 const selectedTopicId = ref('')
 const selectedApiKeyId = ref('')
+const rankingTopicId = ref('')
+const rankingApiKeyId = ref('')
 const topicMode = ref<ChartMode>('TREND')
 const apiKeyMode = ref<ChartMode>('TREND')
 
 const topicTitle = computed(() => {
-  if (topicMode.value === 'RANKING') return 'Topic 调用 Top 10'
+  if (topicMode.value === 'RANKING') {
+    const t = topics.value.find(x => x.id === rankingTopicId.value)
+    return t ? `Topic 调用：${topicLabel(t)}` : 'Topic 调用 Top 10'
+  }
   const t = topics.value.find(x => x.id === selectedTopicId.value)
-  return t ? `Topic 趋势：${t.namespaceName ? `${t.namespaceName}/` : ''}${t.name}` : 'Topic 趋势'
+  return t ? `Topic 趋势：${topicLabel(t)}` : 'Topic 趋势'
 })
 const apiKeyTitle = computed(() => {
-  if (apiKeyMode.value === 'RANKING') return 'ApiKey 调用 Top 10'
+  if (apiKeyMode.value === 'RANKING') {
+    const k = apikeys.value.find(x => x.id === rankingApiKeyId.value)
+    return k ? `ApiKey 调用：${apiKeyLabel(k)}` : 'ApiKey 调用 Top 10'
+  }
   const k = apikeys.value.find(x => x.id === selectedApiKeyId.value)
   return k ? `ApiKey 趋势：${k.name}` : 'ApiKey 趋势'
 })
@@ -81,6 +89,14 @@ const dateRange = computed(() => {
   const s = overallStats.value ?? topicStats.value ?? apiKeyStats.value
   return s?.from ? `${s.from} ~ ${s.to}` : ''
 })
+
+function topicLabel(t: Topic) {
+  return `${t.namespaceName ? `${t.namespaceName}/` : ''}${t.name}`
+}
+
+function apiKeyLabel(k: ApiKey) {
+  return `${k.name} (${k.prefix}••••)`
+}
 
 async function loadOverview() {
   const [ns, tp, ak] = await Promise.all([
@@ -109,7 +125,9 @@ function rankingParams(dimension: Dimension) {
     value: trendValue.value,
     unit: trendUnit.value,
     dimension,
-    limit: 10
+    limit: 10,
+    topicId: dimension === 'TOPIC' ? rankingTopicId.value || undefined : undefined,
+    apiKeyId: dimension === 'APIKEY' ? rankingApiKeyId.value || undefined : undefined
   }
 }
 
@@ -208,7 +226,7 @@ function renderChart(el: HTMLDivElement | null, stats: Stats | null, kind: 'over
     tooltip: { trigger: 'axis' },
     legend: { textStyle: { color: fg }, top: 0 },
     grid: ranking
-      ? { left: 90, right: 20, top: 36, bottom: 30 }
+      ? { left: 140, right: 20, top: 36, bottom: 30 }
       : { left: 40, right: 20, top: 36, bottom: 30 },
     xAxis: ranking
       ? {
@@ -329,8 +347,12 @@ function onResize() {
                     <el-radio-button :value="'TREND'">趋势</el-radio-button>
                     <el-radio-button :value="'RANKING'">Top10</el-radio-button>
                   </el-radio-group>
-                  <el-select v-if="topicMode === 'TREND'" v-model="selectedTopicId" filterable size="small" style="width: 220px" @change="loadTopicStats">
-                    <el-option v-for="t in topics" :key="t.id" :label="`${t.namespaceName ? `${t.namespaceName}/` : ''}${t.name}`" :value="t.id" />
+                  <el-select v-if="topicMode === 'RANKING'" v-model="rankingTopicId" filterable clearable size="small"
+                             style="width: 220px" placeholder="搜索 Topic" @change="loadTopicStats" @clear="loadTopicStats">
+                    <el-option v-for="t in topics" :key="t.id" :label="topicLabel(t)" :value="t.id" />
+                  </el-select>
+                  <el-select v-else v-model="selectedTopicId" filterable size="small" style="width: 220px" @change="loadTopicStats">
+                    <el-option v-for="t in topics" :key="t.id" :label="topicLabel(t)" :value="t.id" />
                   </el-select>
                 </div>
               </div>
@@ -348,8 +370,12 @@ function onResize() {
                     <el-radio-button :value="'TREND'">趋势</el-radio-button>
                     <el-radio-button :value="'RANKING'">Top10</el-radio-button>
                   </el-radio-group>
-                  <el-select v-if="apiKeyMode === 'TREND'" v-model="selectedApiKeyId" filterable size="small" style="width: 220px" @change="loadApiKeyStats">
-                    <el-option v-for="k in apikeys" :key="k.id" :label="`${k.name} (${k.prefix}••••)`" :value="k.id" />
+                  <el-select v-if="apiKeyMode === 'RANKING'" v-model="rankingApiKeyId" filterable clearable size="small"
+                             style="width: 220px" placeholder="搜索 ApiKey" @change="loadApiKeyStats" @clear="loadApiKeyStats">
+                    <el-option v-for="k in apikeys" :key="k.id" :label="apiKeyLabel(k)" :value="k.id" />
+                  </el-select>
+                  <el-select v-else v-model="selectedApiKeyId" filterable size="small" style="width: 220px" @change="loadApiKeyStats">
+                    <el-option v-for="k in apikeys" :key="k.id" :label="apiKeyLabel(k)" :value="k.id" />
                   </el-select>
                 </div>
               </div>

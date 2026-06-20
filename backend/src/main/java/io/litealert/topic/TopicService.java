@@ -9,6 +9,7 @@ import io.litealert.common.error.ErrorCode;
 import io.litealert.common.util.IdGenerator;
 import io.litealert.namespace.NamespaceService;
 import io.litealert.namespace.domain.Namespace;
+import io.litealert.notify.domain.SubscriptionStore;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class TopicService {
 
     private final TopicStore store;
     private final NamespaceService namespaceService;
+    private final SubscriptionStore subscriptionStore;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
 
@@ -92,6 +94,23 @@ public class TopicService {
         boolean published = t.getStatus() == Topic.Status.PUBLISHED;
 
         if (req.description() != null) t.setDescription(req.description());
+
+        if (req.name() != null && !req.name().equals(t.getName())) {
+            if (t.getStatus() != Topic.Status.DRAFT) {
+                throw new BusinessException(ErrorCode.CONFLICT, "published or disabled topic name cannot be changed");
+            }
+            validateName(req.name());
+            store.findByNamespaceAndName(t.getNamespaceId(), req.name())
+                    .filter(existing -> !existing.getId().equals(id))
+                    .ifPresent(existing -> { throw new BusinessException(ErrorCode.TOPIC_NAME_TAKEN); });
+            String oldName = t.getName();
+            t.setName(req.name());
+            audit.log("topic.rename", Map.of(
+                    "actor", currentUser.idOrThrow(),
+                    "topicId", id,
+                    "oldName", oldName,
+                    "name", req.name()));
+        }
 
         // Channel templates (preferred path).
         if (req.templates() != null) {
@@ -189,6 +208,37 @@ public class TopicService {
                 "topicId", id));
     }
 
+    public Topic copy(String id, String name, String description, boolean copyAsDraft) {
+        Topic source = getOrThrow(id);
+        validateName(name);
+        store.findByNamespaceAndName(source.getNamespaceId(), name)
+                .ifPresent(existing -> { throw new BusinessException(ErrorCode.TOPIC_NAME_TAKEN); });
+        Topic copied = source.toBuilder()
+                .id(IdGenerator.topicId())
+                .name(name)
+                .description(description)
+                .status(copyAsDraft ? Topic.Status.DRAFT : source.getStatus())
+                .createdAt(Instant.now())
+                .updatedAt(null)
+                .publishedAt(copyAsDraft ? null : source.getPublishedAt())
+                .build();
+        store.save(copied);
+        subscriptionStore.save(copied.getId(), subscriptionStore.getOrEmpty(source.getId()).getContactIds());
+        audit.log("topic.copy", Map.of(
+                "actor", currentUser.idOrThrow(),
+                "sourceTopicId", id,
+                "topicId", copied.getId(),
+                "name", copied.getName()));
+        return copied;
+    }
+
+    private void validateName(String name) {
+        if (name == null || !NAME_RE.matcher(name).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_ARGUMENT,
+                    "topic name must match " + NAME_RE.pattern());
+        }
+    }
+
     private Topic.KeyLocation parseKeyLocation(String value) {
         if (value == null || value.isBlank()) return Topic.KeyLocation.HEADER;
         return Topic.KeyLocation.valueOf(value);
@@ -210,6 +260,7 @@ public class TopicService {
     ) {}
 
     public record UpdateRequest(
+            String name,
             String description,
             Topic.Auth auth,
             JsonNode inboundFormat,

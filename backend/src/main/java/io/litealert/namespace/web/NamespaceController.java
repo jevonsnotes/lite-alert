@@ -41,7 +41,12 @@ public class NamespaceController {
 
     @PatchMapping("/{id}")
     public Namespace update(@PathVariable String id, @RequestBody UpdateRequest req) {
-        return service.updateDescription(id, req.description());
+        return service.update(id, req.name(), req.description());
+    }
+
+    @PostMapping("/{id}/copy")
+    public Namespace copy(@PathVariable String id, @RequestBody CopyRequest req) {
+        return service.copy(id, req.name(), req.description(), req.copyAsDraft());
     }
 
     @PostMapping("/{id}/disable")
@@ -61,5 +66,6 @@ public class NamespaceController {
     }
 
     public record CreateRequest(@NotBlank String name, @Size(max = 200) String description) {}
-    public record UpdateRequest(@Size(max = 200) String description) {}
+    public record UpdateRequest(String name, @Size(max = 200) String description) {}
+    public record CopyRequest(@NotBlank String name, @Size(max = 200) String description, boolean copyAsDraft) {}
 }

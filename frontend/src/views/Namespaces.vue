@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { get, post, del } from '@/http'
+import { CircleCheck, CopyDocument, Delete, Edit, Plus, Promotion, Remove, View } from '@element-plus/icons-vue'
+import { get, post, patch, del } from '@/http'
 import { formatDateTime } from '@/utils/datetime'
 
 type Namespace = {
@@ -14,7 +15,7 @@ type Namespace = {
   createdAt?: string
 }
 
-type Topic = { id: string; name: string; status: string; namespaceId: string; createdAt?: string }
+type Topic = { id: string; name: string; description?: string; status: string; namespaceId: string; createdAt?: string }
 
 type TopicStats = {
   accepted: number
@@ -43,6 +44,16 @@ const tStats = ref<Record<string, TopicStats>>({})
 const search = ref('')
 const dialogVisible = ref(false)
 const newNs = ref({ name: '', description: '' })
+const editNsVisible = ref(false)
+const editingNs = ref<Namespace | null>(null)
+const editNsForm = ref({ name: '', description: '' })
+const copyNsVisible = ref(false)
+const sourceNs = ref<Namespace | null>(null)
+const copyNsForm = ref({ name: '', description: '', copyAsDraft: true })
+const copyTopicVisible = ref(false)
+const sourceTopic = ref<Topic | null>(null)
+const sourceTopicNamespace = ref<Namespace | null>(null)
+const copyTopicForm = ref({ name: '', description: '', copyAsDraft: true })
 
 async function loadAll() {
   namespaces.value = await get<Namespace[]>('/namespaces')
@@ -188,6 +199,71 @@ async function submitNamespace() {
   await loadAll()
 }
 
+function editNamespace(ns: any) {
+  editingNs.value = ns
+  editNsForm.value = { name: ns.name, description: ns.description ?? '' }
+  editNsVisible.value = true
+}
+
+async function submitEditNamespace() {
+  if (!editingNs.value) return
+  if (editNsForm.value.name !== editingNs.value.name) {
+    await ElMessageBox.confirm(
+      '命名空间名称会影响该空间下所有 Topic 的 Webhook URL，确认修改？',
+      '修改命名空间名称',
+      { type: 'warning' }
+    )
+  }
+  await patch(`/namespaces/${editingNs.value.id}`, editNsForm.value)
+  editNsVisible.value = false
+  ElMessage.success('已保存')
+  await loadAll()
+}
+
+function copyNamespace(ns: any) {
+  sourceNs.value = ns
+  copyNsForm.value = { name: `${ns.name}_copy`, description: ns.description ?? '', copyAsDraft: true }
+  copyNsVisible.value = true
+}
+
+async function submitCopyNamespace() {
+  if (!sourceNs.value) return
+  if (!copyNsForm.value.copyAsDraft) {
+    await ElMessageBox.confirm(
+      '保持原状态会让已发布 Topic 在复制后立即拥有新的可调用 Webhook URL，且订阅关系会同步复制。确认继续？',
+      '复制命名空间',
+      { type: 'warning' }
+    )
+  }
+  await post(`/namespaces/${sourceNs.value.id}/copy`, copyNsForm.value)
+  copyNsVisible.value = false
+  ElMessage.success('已复制命名空间')
+  await loadAll()
+}
+
+function copyTopic(t: any, ns: any) {
+  sourceTopic.value = t
+  sourceTopicNamespace.value = ns
+  copyTopicForm.value = { name: `${t.name}_copy`, description: t.description ?? '', copyAsDraft: true }
+  copyTopicVisible.value = true
+}
+
+async function submitCopyTopic() {
+  if (!sourceTopic.value || !sourceTopicNamespace.value) return
+  if (!copyTopicForm.value.copyAsDraft) {
+    await ElMessageBox.confirm(
+      '保持原状态会让已发布 Topic 在复制后立即拥有新的可调用 Webhook URL，且订阅关系会同步复制。确认继续？',
+      '复制 Topic',
+      { type: 'warning' }
+    )
+  }
+  await post(`/topics/${sourceTopic.value.id}/copy`, copyTopicForm.value)
+  copyTopicVisible.value = false
+  ElMessage.success('已复制 Topic')
+  await refreshTopics(sourceTopicNamespace.value.id)
+  await loadAll()
+}
+
 async function newTopic(ns: any) {
   router.push({
     name: 'topic-detail',
@@ -274,18 +350,21 @@ async function removeNamespace(ns: any) {
               <el-table-column label="创建时间" width="160">
                 <template #default="{ row: t }">{{ formatDateTime(t.createdAt) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="200">
+              <el-table-column label="操作" width="132" align="center">
                 <template #default="{ row: t }">
-                  <el-button size="small" link type="primary"
-                             @click="router.push({ name: 'topic-detail', params: { id: t.id } })">查看</el-button>
-                  <el-button v-if="t.status === 'DRAFT'" size="small" link type="success"
-                             @click="publishTopic(t, row)">发布</el-button>
-                  <el-button v-if="t.status === 'PUBLISHED'" size="small" link type="warning"
-                             @click="disableTopic(t, row)">禁用</el-button>
-                  <el-button v-if="t.status === 'DISABLED'" size="small" link type="success"
-                             @click="enableTopic(t, row)">恢复</el-button>
-                  <el-button v-if="t.status !== 'PUBLISHED'" size="small" link type="danger"
-                             @click="deleteTopic(t, row)">删除</el-button>
+                  <el-button class="op-btn" size="small" link type="primary" :icon="View"
+                             title="查看" aria-label="查看"
+                             @click="router.push({ name: 'topic-detail', params: { id: t.id } })" />
+                  <el-button class="op-btn" size="small" link type="primary" :icon="CopyDocument"
+                             title="复制" aria-label="复制" @click="copyTopic(t, row)" />
+                  <el-button v-if="t.status === 'DRAFT'" class="op-btn" size="small" link type="success" :icon="Promotion"
+                             title="发布" aria-label="发布" @click="publishTopic(t, row)" />
+                  <el-button v-if="t.status === 'PUBLISHED'" class="op-btn" size="small" link type="warning" :icon="Remove"
+                             title="禁用" aria-label="禁用" @click="disableTopic(t, row)" />
+                  <el-button v-if="t.status === 'DISABLED'" class="op-btn" size="small" link type="success" :icon="CircleCheck"
+                             title="恢复" aria-label="恢复" @click="enableTopic(t, row)" />
+                  <el-button v-if="t.status !== 'PUBLISHED'" class="op-btn" size="small" link type="danger" :icon="Delete"
+                             title="删除" aria-label="删除" @click="deleteTopic(t, row)" />
                 </template>
               </el-table-column>
             </el-table>
@@ -293,11 +372,11 @@ async function removeNamespace(ns: any) {
         </template>
       </el-table-column>
       <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
-      <el-table-column label="ID" width="180" show-overflow-tooltip>
+      <el-table-column label="ID" width="160" show-overflow-tooltip>
         <template #default="{ row }"><code class="mono ellipsis">{{ row.id }}</code></template>
       </el-table-column>
-      <el-table-column prop="description" label="描述" min-width="160" show-overflow-tooltip />
-      <el-table-column label="状态" width="96">
+      <el-table-column prop="description" label="描述" min-width="100" show-overflow-tooltip />
+      <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 'DISABLED' ? 'danger' : 'success'">
             {{ row.status || 'ACTIVE' }}
@@ -314,7 +393,7 @@ async function removeNamespace(ns: any) {
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="消息统计" width="320">
+      <el-table-column label="消息统计" width="230">
         <template #default="{ row }">
           <span class="msg-stats">
             <span class="ms-item" :title="'受理: ' + (nsStats[row.id]?.accepted ?? 0)">受 {{ nsStats[row.id]?.accepted ?? 0 }}</span>
@@ -328,12 +407,20 @@ async function removeNamespace(ns: any) {
       <el-table-column label="创建时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180">
+      <el-table-column label="操作" width="155" align="center">
         <template #default="{ row }">
-          <el-button size="small" link type="primary" @click="newTopic(row)">+ Topic</el-button>
-          <el-button v-if="row.status !== 'DISABLED'" size="small" link type="warning" @click="disableNamespace(row)">禁用</el-button>
-          <el-button v-else size="small" link type="success" @click="enableNamespace(row)">恢复</el-button>
-          <el-button size="small" link type="danger" @click="removeNamespace(row)">删除</el-button>
+          <el-button class="op-btn" size="small" link type="primary" :icon="Plus"
+                     title="新增 Topic" aria-label="新增 Topic" @click="newTopic(row)" />
+          <el-button class="op-btn" size="small" link type="primary" :icon="Edit"
+                     title="编辑" aria-label="编辑" @click="editNamespace(row)" />
+          <el-button class="op-btn" size="small" link type="primary" :icon="CopyDocument"
+                     title="复制" aria-label="复制" @click="copyNamespace(row)" />
+          <el-button v-if="row.status !== 'DISABLED'" class="op-btn" size="small" link type="warning" :icon="Remove"
+                     title="禁用" aria-label="禁用" @click="disableNamespace(row)" />
+          <el-button v-else class="op-btn" size="small" link type="success" :icon="CircleCheck"
+                     title="恢复" aria-label="恢复" @click="enableNamespace(row)" />
+          <el-button class="op-btn" size="small" link type="danger" :icon="Delete"
+                     title="删除" aria-label="删除" @click="removeNamespace(row)" />
         </template>
       </el-table-column>
     </el-table>
@@ -350,6 +437,69 @@ async function removeNamespace(ns: any) {
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitNamespace">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editNsVisible" title="编辑命名空间" width="480px">
+      <el-alert type="warning" :closable="false" class="dialog-alert"
+                title="修改命名空间名称会影响该空间下所有 Topic 的 Webhook URL。" />
+      <el-form label-width="80px">
+        <el-form-item label="名称" required>
+          <el-input v-model="editNsForm.name" placeholder="3-32 字符，字母开头，可含数字 / _ / -" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="editNsForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editNsVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEditNamespace">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="copyNsVisible" title="复制命名空间" width="520px">
+      <el-alert type="info" :closable="false" class="dialog-alert"
+                title="会复制该命名空间下的 Topic 配置和订阅关系，Topic 名称保持不变。" />
+      <el-form label-width="110px">
+        <el-form-item label="新名称" required>
+          <el-input v-model="copyNsForm.name" placeholder="3-32 字符，字母开头，可含数字 / _ / -" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="copyNsForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="Topic 状态">
+          <el-radio-group v-model="copyNsForm.copyAsDraft">
+            <el-radio :value="true">复制为草稿</el-radio>
+            <el-radio :value="false">保持原状态</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="copyNsVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitCopyNamespace">复制</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="copyTopicVisible" title="复制 Topic" width="520px">
+      <el-alert type="info" :closable="false" class="dialog-alert"
+                title="会复制 Topic 配置和订阅关系。" />
+      <el-form label-width="110px">
+        <el-form-item label="新名称" required>
+          <el-input v-model="copyTopicForm.name" placeholder="3-32 字符，字母开头，可含数字 / _ / -" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="copyTopicForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="Topic 状态">
+          <el-radio-group v-model="copyTopicForm.copyAsDraft">
+            <el-radio :value="true">复制为草稿</el-radio>
+            <el-radio :value="false">保持原状态</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="copyTopicVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitCopyTopic">复制</el-button>
       </template>
     </el-dialog>
   </div>
@@ -370,6 +520,8 @@ async function removeNamespace(ns: any) {
 .ms-fail { color: #ef4444; }
 .ms-pending { color: #f59e0b; }
 .ms-retry { color: #a855f7; }
+.dialog-alert { margin-bottom: 12px; }
+.op-btn { padding: 2px 4px; min-width: 20px; }
 :deep(.el-table__expanded-cell) { padding: 0 !important; }
-:deep(.el-button + .el-button) { margin-left: 6px; }
+:deep(.el-button + .el-button) { margin-left: 2px; }
 </style>
