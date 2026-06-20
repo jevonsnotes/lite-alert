@@ -5,7 +5,6 @@ import { md5 } from '@/utils/md5'
 export type UserProfile = {
   id: string
   username: string
-  role: 'ADMIN' | 'USER'
   permissions?: string[]
   roleIds?: string[]
   enabled: boolean
@@ -28,8 +27,7 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isLoggedIn: (s) => !!s.token,
-    isAdmin: (s) => s.user?.role === 'ADMIN',
-    hasPermission: (s) => (permission: string) => s.user?.role === 'ADMIN' || (s.user?.permissions ?? []).includes(permission)
+    hasPermission: (s) => (permission: string) => (s.user?.permissions ?? []).includes(permission)
   },
   actions: {
     hydrate() {

@@ -14,14 +14,14 @@
 
 - 命名空间名称全局唯一。
 - 每个命名空间有 `ownerId`，普通用户只能管理自己的命名空间。
-- 管理员可查看全部命名空间，并可执行运维管理动作。
+- 拥有 `NAMESPACE_VIEW_ALL` 权限的用户可查看全部命名空间，并可执行运维管理动作。
 
 ### 1.3 操作
 
 | 操作 | 接口 | 说明 |
 | --- | --- | --- |
 | 创建 | `POST /api/namespaces` | owner=当前用户 |
-| 列表 | `GET /api/namespaces` | USER 只看自己；ADMIN 可看全部 |
+| 列表 | `GET /api/namespaces` | 普通用户只看自己；`NAMESPACE_VIEW_ALL` 可看全部 |
 | 详情 | `GET /api/namespaces/{id}` | 返回命名空间及统计信息 |
 | 编辑 | `PATCH /api/namespaces/{id}` | 通常只修改描述等非 URL 字段 |
 | 禁用 | `POST /api/namespaces/{id}/disable` | 禁用后其下 Topic 不应再被调用 |

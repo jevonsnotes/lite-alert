@@ -57,14 +57,14 @@ lite-alert:
   "id": "u_xxxx",
   "username": "alice",
   "passwordHash": "<encrypted bcrypt hash>",
-  "role": "ADMIN | USER",
-  "roleId": "r_xxxx",
   "enabled": true,
-  "permissions": ["TOPIC_VIEW", "APIKEY_CREATE"],
+  "roleIds": ["r_xxxx"],
   "createdAt": "2026-06-15T10:00:00Z",
   "updatedAt": "2026-06-15T10:00:00Z"
 }
 ```
+
+用户不再有基础角色（`ADMIN / USER`）和直接权限字段。权限完全来自 `roleIds` 绑定角色后汇总得出。
 
 ### 4.2 Role
 
@@ -79,6 +79,15 @@ lite-alert:
   "updatedAt": "..."
 }
 ```
+
+内置角色：
+
+| 角色 ID | 角色名称 | 说明 |
+| --- | --- | --- |
+| `r_super_admin` | SUPER_ADMIN | 内置超级管理员，拥有全部权限 |
+| `r_normal_user` | NORMAL_USER | 内置普通用户，默认无管理权限 |
+
+初始 `admin` 用户默认绑定 `r_super_admin`。
 
 ### 4.3 Namespace
 

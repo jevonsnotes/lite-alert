@@ -23,15 +23,14 @@
 ├── /apikeys               ApiKey 管理
 ├── /contacts              通知目标
 ├── /audit                 审计日志查询
-├── /admin/users           ADMIN: 用户管理
+├── /admin/users           USER_VIEW: 用户管理
 ├── /admin/roles           ROLE_VIEW: 角色管理
-└── /admin/system          ADMIN: 系统设置
+└── /admin/system          SYSTEM_SETTINGS_VIEW: 系统设置
 ```
 
 路由守卫规则：
 
 - 未登录访问非公开页面 → 跳转 `/login`。
-- `meta.adminOnly` 页面要求管理员。
 - `meta.permission` 页面要求当前用户拥有对应权限。
 
 ## 3. 关键页面交互

@@ -5,16 +5,15 @@ import { get, post, patch, del } from '@/http'
 import { formatDateTime } from '@/utils/datetime'
 import { md5 } from '@/utils/md5'
 
-type User = { id: string; username: string; role: 'ADMIN' | 'USER'; roleIds?: string[]; enabled: boolean; createdAt?: string }
+type User = { id: string; username: string; roleIds?: string[]; enabled: boolean; createdAt?: string }
 type Role = { id: string; name: string }
 
 const list = ref<User[]>([])
 const roles = ref<Role[]>([])
 const dialogVisible = ref(false)
-const draft = reactive<{ username: string; password: string; role: 'ADMIN' | 'USER'; roleIds: string[] }>({
+const draft = reactive<{ username: string; password: string; roleIds: string[] }>({
   username: '',
   password: '',
-  role: 'USER',
   roleIds: []
 })
 
@@ -31,7 +30,6 @@ onMounted(load)
 function openCreate() {
   draft.username = ''
   draft.password = ''
-  draft.role = 'USER'
   draft.roleIds = []
   dialogVisible.value = true
 }
@@ -83,17 +81,12 @@ async function remove(u: any) {
     </div>
     <el-table :data="list">
       <el-table-column prop="username" label="用户名" />
-      <el-table-column label="角色" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'info'">{{ row.role }}</el-tag>
-        </template>
-      </el-table-column>
       <el-table-column label="启用" width="100">
         <template #default="{ row }">
           <el-switch :model-value="row.enabled" @change="toggle(row)" />
         </template>
       </el-table-column>
-      <el-table-column label="角色绑定" min-width="220">
+      <el-table-column label="角色" min-width="220">
         <template #default="{ row }">
           <el-select
             :model-value="row.roleIds ?? []"
@@ -122,12 +115,6 @@ async function remove(u: any) {
         <el-form-item label="用户名" required><el-input v-model="draft.username" /></el-form-item>
         <el-form-item label="密码" required><el-input v-model="draft.password" type="password" show-password /></el-form-item>
         <el-form-item label="角色">
-          <el-radio-group v-model="draft.role">
-            <el-radio value="USER">USER</el-radio>
-            <el-radio value="ADMIN">ADMIN</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="角色绑定">
           <el-select v-model="draft.roleIds" multiple style="width: 100%">
             <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
