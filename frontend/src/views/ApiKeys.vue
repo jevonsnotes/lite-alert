@@ -22,7 +22,6 @@ type ApiKey = {
 
 type Namespace = { id: string; name: string }
 type Topic = { id: string; name: string; namespaceId: string; namespaceName: string }
-type Settings = { rateLimit?: { perApiKeyPerMinute?: number } }
 
 const list = ref<ApiKey[]>([])
 const namespaces = ref<Namespace[]>([])
@@ -48,16 +47,20 @@ const isEditing = computed(() => !!editingId.value)
 const dialogTitle = computed(() => isEditing.value ? '编辑 ApiKey' : '新建 ApiKey')
 
 async function load() {
-  const [keys, ns, ts, settings] = await Promise.all([
+  const [keys, ns, ts] = await Promise.all([
     get<ApiKey[]>('/apikeys'),
     get<Namespace[]>('/namespaces'),
-    get<Topic[]>('/topics'),
-    get<Settings>('/admin/settings')
+    get<Topic[]>('/topics')
   ])
   list.value = keys
   namespaces.value = ns
   topics.value = ts
-  apiKeyDefaultLimit.value = settings.rateLimit?.perApiKeyPerMinute ?? 200
+  try {
+    const settings = await get<{ rateLimit: { perApiKeyPerMinute: number } }>('/apikeys/settings')
+    apiKeyDefaultLimit.value = settings.rateLimit?.perApiKeyPerMinute ?? 200
+  } catch {
+    apiKeyDefaultLimit.value = 200
+  }
 }
 onMounted(load)
 

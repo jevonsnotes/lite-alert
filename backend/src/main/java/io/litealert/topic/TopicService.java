@@ -2,7 +2,8 @@ package io.litealert.topic;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.litealert.auth.CurrentUser;
-import io.litealert.auth.domain.User;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -32,6 +33,7 @@ public class TopicService {
     private final SubscriptionStore subscriptionStore;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
+    private final PermissionService permissionService;
 
     public List<Topic> listByNamespace(String namespaceId) {
         namespaceService.getOrThrow(namespaceId); // ownership check
@@ -39,14 +41,14 @@ public class TopicService {
     }
 
     public List<Topic> listMine() {
-        if (currentUser.isAdmin()) return store.findAll();
+        if (permissionService.has(Permissions.TOPIC_VIEW_ALL)) return store.findAll();
         return store.findByOwner(currentUser.idOrThrow());
     }
 
     public Topic getOrThrow(String id) {
         Topic t = store.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "topic not found"));
-        if (!currentUser.isAdmin() && !t.getOwnerId().equals(currentUser.idOrThrow())) {
+        if (!t.getOwnerId().equals(currentUser.idOrThrow()) && !permissionService.has(Permissions.TOPIC_VIEW_ALL)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return t;

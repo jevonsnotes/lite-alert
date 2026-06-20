@@ -30,7 +30,6 @@ type Stats = {
   span?: { value: number; unit: Unit }
 }
 type Settings = {
-  auditRetention: { value: number; unit: Unit }
   dashboardDefaultTrend: { value: number; unit: Unit }
 }
 
@@ -85,6 +84,7 @@ const apiKeyTitle = computed(() => {
   const k = apikeys.value.find(x => x.id === selectedApiKeyId.value)
   return k ? `ApiKey 趋势：${k.name}` : 'ApiKey 趋势'
 })
+const canViewStats = computed(() => auth.hasPermission('STATS_VIEW'))
 const dateRange = computed(() => {
   const s = overallStats.value ?? topicStats.value ?? apiKeyStats.value
   return s?.from ? `${s.from} ~ ${s.to}` : ''
@@ -132,7 +132,7 @@ function rankingParams(dimension: Dimension) {
 }
 
 async function loadAllStats() {
-  if (!auth.isAdmin) return
+  if (!canViewStats.value) return
   const requests: Promise<Stats>[] = [
     get<Stats>('/admin/stats/daily', { params: baseParams('OVERALL') }),
     get<Stats>('/admin/stats/daily', {
@@ -150,7 +150,7 @@ async function loadAllStats() {
 }
 
 async function loadTopicStats() {
-  if (!auth.isAdmin) return
+  if (!canViewStats.value) return
   if (topicMode.value === 'RANKING') {
     topicRanking.value = await get<Stats>('/admin/stats/ranking', { params: rankingParams('TOPIC') })
   } else {
@@ -163,7 +163,7 @@ async function loadTopicStats() {
 }
 
 async function loadApiKeyStats() {
-  if (!auth.isAdmin) return
+  if (!canViewStats.value) return
   if (apiKeyMode.value === 'RANKING') {
     apiKeyRanking.value = await get<Stats>('/admin/stats/ranking', { params: rankingParams('APIKEY') })
   } else {
@@ -176,13 +176,13 @@ async function loadApiKeyStats() {
 }
 
 async function init() {
-  if (!auth.isAdmin) return
+  if (!canViewStats.value) return
   try {
-    const s = await get<Settings>('/admin/settings')
+    const s = await get<Settings>('/dashboard/settings')
     trendValue.value = s.dashboardDefaultTrend.value
     trendUnit.value = s.dashboardDefaultTrend.unit
   } catch {
-    // settings endpoint requires admin; non-admin path was guarded above.
+    // settings endpoint requires permission; users without it keep default trend settings.
   }
   await loadAllStats()
 }
@@ -314,7 +314,7 @@ function onResize() {
       </el-col>
     </el-row>
 
-    <template v-if="auth.isAdmin">
+    <template v-if="canViewStats">
       <el-card class="block trend-toolbar">
         <div class="trend-picker">
           <span class="muted-inline">趋势窗口：最近</span>
@@ -387,7 +387,7 @@ function onResize() {
     </template>
 
     <el-alert v-else type="info" :closable="false">
-      仪表盘的趋势图仅 ADMIN 可见。
+      仪表盘趋势图需要统计查看权限。
     </el-alert>
   </div>
 </template>

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.auth.CurrentUser;
 import io.litealert.auth.domain.UserStore;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.db.DbJson;
 import io.litealert.namespace.domain.NamespaceStore;
 import io.litealert.topic.domain.TopicStore;
@@ -33,6 +35,7 @@ public class AuditController {
     private final UserStore userStore;
     private final JdbcTemplate jdbc;
     private final DbJson json;
+    private final PermissionService permissionService;
 
     @GetMapping
     public Map<String, Object> tail(
@@ -45,6 +48,7 @@ public class AuditController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false, defaultValue = "all") String field) {
 
+        permissionService.require(Permissions.AUDIT_VIEW);
         if (size < 1) size = 1;
         if (size > 500) size = 500;
         if (page < 0) page = 0;
@@ -56,7 +60,7 @@ public class AuditController {
 
         String needle = q == null || q.isBlank() ? null : q.trim().toLowerCase();
         SearchField scope = SearchField.parse(field);
-        boolean isAdmin = currentUser.isAdmin();
+        boolean canViewAll = permissionService.has(Permissions.AUDIT_VIEW_ALL);
         String myId = currentUser.idOrThrow();
 
         List<Map<String, Object>> all = jdbc.query(
@@ -74,7 +78,7 @@ public class AuditController {
         List<Map<String, Object>> hits = all.stream()
                 .filter(evt -> type == null || type.equals(evt.get("type")))
                 .filter(evt -> topicId == null || topicId.equals(evt.get("topicId")))
-                .filter(evt -> isAdmin || visibleTo(evt, myId))
+                .filter(evt -> canViewAll || visibleTo(evt, myId))
                 .peek(this::enrich)
                 .filter(evt -> needle == null || matchesQuery(evt, needle, scope))
                 .toList();
@@ -87,7 +91,7 @@ public class AuditController {
         stats.put("to", toDate.toString());
         stats.put("matched", total);
         stats.put("visible", total);
-        stats.put("isAdmin", isAdmin);
+        stats.put("canViewAll", canViewAll);
         stats.put("userId", myId);
 
         return Map.of(

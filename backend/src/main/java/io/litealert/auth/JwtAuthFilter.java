@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Parses {@code Authorization: Bearer <jwt>} for management API requests
@@ -51,10 +52,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String userId = claims.getSubject();
                 User u = userStore.findById(userId).orElse(null);
                 if (u != null && u.isEnabled()) {
-                    var auth = new UsernamePasswordAuthenticationToken(
-                            u.getId(),
-                            null,
-                            CurrentUser.authoritiesFor(u.getRole()));
+                    var auth = new UsernamePasswordAuthenticationToken(u.getId(), null, List.of());
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 }
             } catch (Exception e) {

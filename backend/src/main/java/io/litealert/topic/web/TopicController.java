@@ -1,5 +1,7 @@
 package io.litealert.topic.web;
 
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.topic.TopicService;
 import io.litealert.topic.domain.Topic;
 import jakarta.validation.constraints.NotBlank;
@@ -24,9 +26,11 @@ import java.util.Map;
 public class TopicController {
 
     private final TopicService service;
+    private final PermissionService permissionService;
 
     @GetMapping
     public List<Topic> list(@RequestParam(required = false) String namespaceId) {
+        permissionService.require(Permissions.TOPIC_VIEW);
         if (namespaceId == null) return service.listMine();
         return service.listByNamespace(namespaceId);
     }
@@ -39,38 +43,45 @@ public class TopicController {
     @PostMapping
     public Topic create(@RequestParam String namespaceId,
                         @RequestBody TopicService.CreateRequest req) {
+        permissionService.require(Permissions.TOPIC_CREATE);
         return service.create(namespaceId, req);
     }
 
     @PatchMapping("/{id}")
     public Topic update(@PathVariable String id,
                         @RequestBody TopicService.UpdateRequest req) {
+        permissionService.require(Permissions.TOPIC_UPDATE);
         return service.update(id, req);
     }
 
     @PostMapping("/{id}/copy")
     public Topic copy(@PathVariable String id,
                       @RequestBody CopyRequest req) {
+        permissionService.require(Permissions.TOPIC_CREATE);
         return service.copy(id, req.name(), req.description(), req.copyAsDraft());
     }
 
     @PostMapping("/{id}/publish")
     public Topic publish(@PathVariable String id) {
+        permissionService.require(Permissions.TOPIC_PUBLISH);
         return service.publish(id);
     }
 
     @PostMapping("/{id}/disable")
     public Topic disable(@PathVariable String id) {
+        permissionService.require(Permissions.TOPIC_DISABLE);
         return service.disable(id);
     }
 
     @PostMapping("/{id}/enable")
     public Topic enable(@PathVariable String id) {
+        permissionService.require(Permissions.TOPIC_UPDATE);
         return service.enable(id);
     }
 
     @DeleteMapping("/{id}")
     public Map<String, String> delete(@PathVariable String id) {
+        permissionService.require(Permissions.TOPIC_DELETE);
         service.delete(id);
         return Map.of("status", "deleted");
     }

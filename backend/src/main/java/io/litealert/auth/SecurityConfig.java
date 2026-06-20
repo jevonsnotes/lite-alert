@@ -53,7 +53,6 @@ public class SecurityConfig {
                 .requestMatchers("/", "/index.html",
                         "/assets/**", "/favicon.ico",
                         "/static/**", "/h2-console/**").permitAll()
-                .requestMatchers("/api/admin/**", "/api/users/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()                              // SPA fallback paths
             )

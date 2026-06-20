@@ -1,6 +1,7 @@
 package io.litealert.notify;
 
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.notify.domain.NotifyTarget;
@@ -29,11 +30,11 @@ class NotifyTargetServiceTest {
     void setUp() {
         store = mock(NotifyTargetStore.class);
         CurrentUser currentUser = mock(CurrentUser.class);
+        PermissionService permissionService = mock(PermissionService.class);
         audit = mock(AuditLogger.class);
         when(currentUser.idOrThrow()).thenReturn("u_1");
-        when(currentUser.isAdmin()).thenReturn(false);
         when(store.save(any(NotifyTarget.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new NotifyTargetService(store, currentUser, audit);
+        service = new NotifyTargetService(store, currentUser, audit, permissionService);
     }
 
     @Test

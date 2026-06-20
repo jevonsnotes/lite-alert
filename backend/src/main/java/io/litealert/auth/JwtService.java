@@ -46,7 +46,6 @@ public class JwtService {
         return Jwts.builder()
                 .subject(user.getId())
                 .claim("username", user.getUsername())
-                .claim("role", user.getRole().name())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
                 .signWith(key)
@@ -69,7 +68,6 @@ public class JwtService {
         return Map.of(
                 "sub", c.getSubject(),
                 "username", c.get("username", String.class),
-                "role", c.get("role", String.class),
                 "exp", c.getExpiration().toInstant().toString());
     }
 

@@ -7,8 +7,6 @@ create table if not exists la_user (
   id varchar(64) primary key,
   username varchar(64) not null unique,
   password_hash varchar(255) not null,
-  role varchar(16) not null,
-  permissions_json clob,
   enabled boolean not null,
   created_at timestamp,
   created_by varchar(64),

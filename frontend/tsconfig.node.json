@@ -12,5 +12,5 @@
     "allowSyntheticDefaultImports": true,
     "lib": ["ES2022"]
   },
-  "include": []
+  "include": ["src/**/*.ts"]
 }

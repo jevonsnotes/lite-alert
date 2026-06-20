@@ -22,6 +22,15 @@ type Mapping = {
 }
 type Transform = { enabled: boolean; mappings: Mapping[] }
 
+type WebhookResponseCheck = {
+  enabled: boolean
+  bodyType: 'AUTO' | 'JSON' | 'XML'
+  successPath: string
+  successValue: string
+  messagePath?: string
+  operator: 'EQ' | 'NE' | 'CONTAINS' | 'REGEX' | 'GT' | 'LT' | 'EXISTS'
+}
+
 type ChannelTemplate = {
   subject?: string
   body?: string
@@ -32,14 +41,12 @@ type ChannelTemplate = {
   transform?: Transform         // WEBHOOK only: field mappings
 }
 
-type WebhookResponseCheck = {
-  enabled: boolean
-  bodyType: 'AUTO' | 'JSON' | 'XML'
-  successPath: string
-  successValue: string
-  messagePath?: string
-  operator: 'EQ' | 'NE' | 'CONTAINS' | 'REGEX' | 'GT' | 'LT' | 'EXISTS'
+type WebhookTemplate = ChannelTemplate & {
+  responseCheck: WebhookResponseCheck
+  transform: Transform
 }
+
+type TemplateState = Record<Exclude<ChannelType, 'WEBHOOK'>, ChannelTemplate> & { WEBHOOK: WebhookTemplate }
 
 type Topic = {
   id: string
@@ -173,12 +180,16 @@ const CHANNELS: ChannelDef[] = [
 const channelTab = ref<ChannelType>('EMAIL')
 const currentChannel = computed(() => CHANNELS.find(c => c.value === channelTab.value)!)
 
-const templates = ref<Record<ChannelType, ChannelTemplate>>({
+function emptyWebhookTemplate(): WebhookTemplate {
+  return { transform: { enabled: false, mappings: [] }, responseCheck: { enabled: false, bodyType: 'AUTO', successPath: '', successValue: '', messagePath: '', operator: 'EQ' } }
+}
+
+const templates = ref<TemplateState>({
   EMAIL: {}, DINGTALK: {}, FEISHU: {}, WECOM: {},
-  WEBHOOK: { transform: { enabled: false, mappings: [] }, responseCheck: { enabled: false, bodyType: 'AUTO', successPath: '', successValue: '', messagePath: '', operator: 'EQ' } }
+  WEBHOOK: emptyWebhookTemplate()
 })
 
-const TEMPLATE_PRESETS: Record<ChannelType, ChannelTemplate> = {
+const TEMPLATE_PRESETS: TemplateState = {
   EMAIL: {
     subject: '[{{namespace}}] {{topic}} · {{title}}',
     body:

@@ -1,7 +1,6 @@
 package io.litealert.auth.permission;
 
 import io.litealert.auth.CurrentUser;
-import io.litealert.auth.domain.User;
 import io.litealert.auth.role.RoleStore;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -25,10 +24,7 @@ public class PermissionService {
     }
 
     public Set<String> currentPermissions() {
-        User user = currentUser.getOrThrow();
-        Set<String> out = permissions(user.getId());
-        if (user.getPermissions() != null) user.getPermissions().forEach(p -> out.add(p.name()));
-        return out;
+        return permissions(currentUser.idOrThrow());
     }
 
     public boolean has(String permission) { return currentPermissions().contains(permission); }

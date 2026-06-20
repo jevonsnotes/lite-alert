@@ -22,9 +22,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * ADMIN-scoped operational endpoints: deeper health, SMTP CRUD + live test.
- */
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -39,6 +36,7 @@ public class AdminController {
 
     @GetMapping("/health")
     public Map<String, Object> deepHealth() {
+        permissionService.require(Permissions.SYSTEM_HEALTH_VIEW);
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("status", "UP");
         r.put("time", Instant.now().toString());
@@ -54,10 +52,49 @@ public class AdminController {
         return r;
     }
 
-    // ---------- SMTP config ----------
-
     @GetMapping("/mail-config")
     public Map<String, Object> getMailConfig() {
+        permissionService.require(Permissions.MAIL_CONFIG_VIEW);
+        return mailConfigView();
+    }
+
+    @PutMapping("/mail-config")
+    public Map<String, Object> saveMailConfig(@RequestBody MailConfig req) {
+        permissionService.require(Permissions.MAIL_CONFIG_UPDATE);
+        mailService.save(req, currentUser.idOrThrow());
+        return mailConfigView();
+    }
+
+    @DeleteMapping("/mail-config")
+    public Map<String, Object> resetMailConfig() {
+        permissionService.require(Permissions.MAIL_CONFIG_UPDATE);
+        mailService.resetToYml(currentUser.idOrThrow());
+        return mailConfigView();
+    }
+
+    @PostMapping("/smtp-test")
+    public Map<String, Object> smtpTest(@RequestBody SmtpTestRequest req) {
+        permissionService.require(Permissions.SMTP_TEST);
+        MailService.TestResult r = mailService.sendTest(req.to(), currentUser.idOrThrow());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", r.ok());
+        if (r.error() != null) out.put("error", r.error());
+        return out;
+    }
+
+    @GetMapping("/settings")
+    public SystemSettings getSettings() {
+        permissionService.require(Permissions.SYSTEM_SETTINGS_VIEW);
+        return settingsService.current();
+    }
+
+    @PutMapping("/settings")
+    public SystemSettings saveSettings(@RequestBody SystemSettings req) {
+        permissionService.require(Permissions.SYSTEM_SETTINGS_UPDATE);
+        return settingsService.save(req, currentUser.idOrThrow());
+    }
+
+    private Map<String, Object> mailConfigView() {
         MailConfig c = mailService.currentConfig();
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("overridden", mailService.isOverridden());
@@ -65,7 +102,6 @@ public class AdminController {
             r.put("config", null);
             return r;
         }
-        // never echo the password back; UI sends "" to keep, real string to change
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("host", c.getHost());
         view.put("port", c.getPort());
@@ -78,41 +114,6 @@ public class AdminController {
         view.put("updatedBy", c.getUpdatedBy());
         r.put("config", view);
         return r;
-    }
-
-    @PutMapping("/mail-config")
-    public Map<String, Object> saveMailConfig(@RequestBody MailConfig req) {
-        mailService.save(req, currentUser.idOrThrow());
-        return getMailConfig();
-    }
-
-    @DeleteMapping("/mail-config")
-    public Map<String, Object> resetMailConfig() {
-        mailService.resetToYml(currentUser.idOrThrow());
-        return getMailConfig();
-    }
-
-    @PostMapping("/smtp-test")
-    public Map<String, Object> smtpTest(@RequestBody SmtpTestRequest req) {
-        MailService.TestResult r = mailService.sendTest(req.to(), currentUser.idOrThrow());
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("ok", r.ok());
-        if (r.error() != null) out.put("error", r.error());
-        return out;
-    }
-
-    // ---------- system settings ----------
-
-    @GetMapping("/settings")
-    public SystemSettings getSettings() {
-        permissionService.require(Permissions.SYSTEM_SETTINGS_VIEW);
-        return settingsService.current();
-    }
-
-    @PutMapping("/settings")
-    public SystemSettings saveSettings(@RequestBody SystemSettings req) {
-        permissionService.require(Permissions.SYSTEM_SETTINGS_UPDATE);
-        return settingsService.save(req, currentUser.idOrThrow());
     }
 
     public record SmtpTestRequest(String to) {}

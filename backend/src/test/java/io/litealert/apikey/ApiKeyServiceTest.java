@@ -3,6 +3,7 @@ package io.litealert.apikey;
 import io.litealert.apikey.domain.ApiKey;
 import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.config.LiteAlertProperties;
 import io.litealert.namespace.NamespaceService;
@@ -41,8 +42,8 @@ class ApiKeyServiceTest {
         ApiKeyHasher hasher = new ApiKeyHasher(props);
         hasher.init();
 
+        PermissionService permissionService = mock(PermissionService.class);
         when(currentUser.idOrThrow()).thenReturn("u_1");
-        when(currentUser.isAdmin()).thenReturn(false);
         when(namespaceService.getOrThrow("ns_1")).thenReturn(Namespace.builder()
                 .id("ns_1")
                 .ownerId("u_1")
@@ -56,7 +57,7 @@ class ApiKeyServiceTest {
                 .build());
 
         when(store.save(any(ApiKey.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new ApiKeyService(store, hasher, currentUser, namespaceService, topicService, audit);
+        service = new ApiKeyService(store, hasher, currentUser, namespaceService, topicService, audit, permissionService);
     }
 
     @Test

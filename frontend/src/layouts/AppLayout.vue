@@ -46,40 +46,38 @@ function logout() {
         :text-color="theme.mode === 'dark' ? '#cdd6f4' : '#1f2937'"
         active-text-color="#3d7cff"
       >
-        <el-menu-item index="/dashboard">
+        <el-menu-item v-if="auth.hasPermission('DASHBOARD_VIEW')" index="/dashboard">
           <el-icon><DataAnalysis /></el-icon>
           <template #title>仪表盘</template>
         </el-menu-item>
-        <el-menu-item index="/namespaces">
+        <el-menu-item v-if="auth.hasPermission('NAMESPACE_VIEW')" index="/namespaces">
           <el-icon><Folder /></el-icon>
           <template #title>命名空间</template>
         </el-menu-item>
-        <el-menu-item index="/apikeys">
+        <el-menu-item v-if="auth.hasPermission('APIKEY_VIEW')" index="/apikeys">
           <el-icon><Key /></el-icon>
           <template #title>ApiKey</template>
         </el-menu-item>
-        <el-menu-item index="/contacts">
+        <el-menu-item v-if="auth.hasPermission('CONTACT_VIEW')" index="/contacts">
           <el-icon><Message /></el-icon>
           <template #title>通知目标</template>
         </el-menu-item>
-        <el-menu-item index="/audit">
+        <el-menu-item v-if="auth.hasPermission('AUDIT_VIEW')" index="/audit">
           <el-icon><Promotion /></el-icon>
           <template #title>调用记录</template>
         </el-menu-item>
-        <template v-if="auth.isAdmin">
-          <el-menu-item v-if="auth.hasPermission('USER_VIEW')" index="/admin/users">
-            <el-icon><User /></el-icon>
-            <template #title>用户管理</template>
-          </el-menu-item>
-          <el-menu-item v-if="auth.hasPermission('ROLE_VIEW')" index="/admin/roles">
-            <el-icon><Key /></el-icon>
-            <template #title>角色管理</template>
-          </el-menu-item>
-          <el-menu-item v-if="auth.hasPermission('SYSTEM_SETTINGS_VIEW')" index="/admin/system">
-            <el-icon><Setting /></el-icon>
-            <template #title>系统设置</template>
-          </el-menu-item>
-        </template>
+        <el-menu-item v-if="auth.hasPermission('USER_VIEW')" index="/admin/users">
+          <el-icon><User /></el-icon>
+          <template #title>用户管理</template>
+        </el-menu-item>
+        <el-menu-item v-if="auth.hasPermission('ROLE_VIEW')" index="/admin/roles">
+          <el-icon><Key /></el-icon>
+          <template #title>角色管理</template>
+        </el-menu-item>
+        <el-menu-item v-if="auth.hasPermission('SYSTEM_SETTINGS_VIEW')" index="/admin/system">
+          <el-icon><Setting /></el-icon>
+          <template #title>系统设置</template>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -91,9 +89,6 @@ function logout() {
             <el-button text @click="theme.toggle()" :icon="theme.mode === 'dark' ? Sunny : Moon" circle />
           </el-tooltip>
           <span class="username">{{ auth.user?.username }}</span>
-          <el-tag size="small" :type="auth.isAdmin ? 'danger' : 'info'">
-            {{ auth.user?.role }}
-          </el-tag>
           <el-button text type="info" @click="logout">退出</el-button>
         </div>
       </el-header>

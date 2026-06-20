@@ -1,100 +1,53 @@
 package io.litealert.auth.domain;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import io.litealert.common.db.DbJson;
+import com.mybatisflex.core.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.sql.ResultSet;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class UserStore {
 
-    private final JdbcTemplate jdbc;
-    private final DbJson json;
+    private final UserMapper mapper;
 
     public Optional<User> findById(String id) {
-        List<User> rows = jdbc.query("select * from la_user where id = ?", this::map, id);
-        return rows.stream().findFirst();
+        User u = mapper.selectOneById(id);
+        return u == null ? Optional.empty() : Optional.of(u);
     }
 
     public Optional<User> findByUsername(String username) {
         if (username == null) return Optional.empty();
-        List<User> rows = jdbc.query("select * from la_user where lower(username) = lower(?)", this::map, username);
-        return rows.stream().findFirst();
+        QueryWrapper qw = QueryWrapper.create()
+                .where("lower(username) = lower(?)", username);
+        return Optional.ofNullable(mapper.selectOneByQuery(qw));
     }
 
     public List<User> findAll() {
-        return jdbc.query("select * from la_user order by created_at desc, username asc", this::map);
+        QueryWrapper qw = QueryWrapper.create()
+                .orderBy("created_at desc, username asc");
+        return mapper.selectListByQuery(qw);
     }
 
     public boolean existsByUsername(String username) {
-        Integer count = jdbc.queryForObject("select count(*) from la_user where lower(username) = lower(?)",
-                Integer.class, username);
-        return count != null && count > 0;
+        QueryWrapper qw = QueryWrapper.create()
+                .select()
+                .where("lower(username) = lower(?)", username);
+        return mapper.selectCountByQuery(qw) > 0;
     }
 
     public synchronized User save(User u) {
-        boolean exists = findById(u.getId()).isPresent();
-        if (exists) {
-            jdbc.update("update la_user set username=?, password_hash=?, role=?, permissions_json=?, enabled=?, created_at=?, created_by=?, updated_at=?, last_login_at=? where id=?",
-                    u.getUsername(), u.getPasswordHash(), u.getRole().name(), permissionsJson(u), u.isEnabled(),
-                    ts(u.getCreatedAt()), u.getCreatedBy(), ts(u.getUpdatedAt()), ts(u.getLastLoginAt()), u.getId());
+        if (findById(u.getId()).isPresent()) {
+            mapper.update(u);
         } else {
-            jdbc.update("insert into la_user(id, username, password_hash, role, permissions_json, enabled, created_at, created_by, updated_at, last_login_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    u.getId(), u.getUsername(), u.getPasswordHash(), u.getRole().name(), permissionsJson(u), u.isEnabled(),
-                    ts(u.getCreatedAt()), u.getCreatedBy(), ts(u.getUpdatedAt()), ts(u.getLastLoginAt()));
+            mapper.insert(u);
         }
         return u;
     }
 
     public synchronized void delete(String id) {
-        jdbc.update("delete from la_user where id = ?", id);
-    }
-
-    public boolean hasAnyAdmin() {
-        Integer count = jdbc.queryForObject("select count(*) from la_user where role = 'ADMIN'", Integer.class);
-        return count != null && count > 0;
-    }
-
-    private User map(ResultSet rs, int rowNum) throws java.sql.SQLException {
-        return User.builder()
-                .id(rs.getString("id"))
-                .username(rs.getString("username"))
-                .passwordHash(rs.getString("password_hash"))
-                .role(User.Role.valueOf(rs.getString("role")))
-                .permissions(permissions(rs.getString("permissions_json")))
-                .enabled(rs.getBoolean("enabled"))
-                .createdAt(instant(rs.getTimestamp("created_at")))
-                .createdBy(rs.getString("created_by"))
-                .updatedAt(instant(rs.getTimestamp("updated_at")))
-                .lastLoginAt(instant(rs.getTimestamp("last_login_at")))
-                .build();
-    }
-
-    private Timestamp ts(Instant instant) {
-        return instant == null ? null : Timestamp.from(instant);
-    }
-
-    private Set<User.Permission> permissions(String value) {
-        List<String> names = json.read(value, new TypeReference<List<String>>() {}, List.of());
-        return names.stream().map(User.Permission::valueOf).collect(Collectors.toCollection(java.util.LinkedHashSet::new));
-    }
-
-    private String permissionsJson(User u) {
-        if (u.getPermissions() == null || u.getPermissions().isEmpty()) return json.write(List.of());
-        return json.write(u.getPermissions().stream().map(Enum::name).toList());
-    }
-
-    private Instant instant(Timestamp ts) {
-        return ts == null ? null : ts.toInstant();
+        mapper.deleteById(id);
     }
 }

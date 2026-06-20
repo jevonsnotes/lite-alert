@@ -1,5 +1,7 @@
 package io.litealert.namespace.web;
 
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.namespace.NamespaceService;
 import io.litealert.namespace.domain.Namespace;
 import jakarta.validation.constraints.NotBlank;
@@ -23,6 +25,7 @@ import java.util.Map;
 public class NamespaceController {
 
     private final NamespaceService service;
+    private final PermissionService permissionService;
 
     @GetMapping
     public List<Namespace> list() {
@@ -36,31 +39,37 @@ public class NamespaceController {
 
     @PostMapping
     public Namespace create(@RequestBody CreateRequest req) {
+        permissionService.require(Permissions.NAMESPACE_CREATE);
         return service.create(req.name(), req.description());
     }
 
     @PatchMapping("/{id}")
     public Namespace update(@PathVariable String id, @RequestBody UpdateRequest req) {
+        permissionService.require(Permissions.NAMESPACE_UPDATE);
         return service.update(id, req.name(), req.description());
     }
 
     @PostMapping("/{id}/copy")
     public Namespace copy(@PathVariable String id, @RequestBody CopyRequest req) {
+        permissionService.require(Permissions.NAMESPACE_CREATE);
         return service.copy(id, req.name(), req.description(), req.copyAsDraft());
     }
 
     @PostMapping("/{id}/disable")
     public Namespace disable(@PathVariable String id) {
+        permissionService.require(Permissions.NAMESPACE_DISABLE);
         return service.disable(id);
     }
 
     @PostMapping("/{id}/enable")
     public Namespace enable(@PathVariable String id) {
+        permissionService.require(Permissions.NAMESPACE_CREATE);
         return service.enable(id);
     }
 
     @DeleteMapping("/{id}")
     public Map<String, String> delete(@PathVariable String id) {
+        permissionService.require(Permissions.NAMESPACE_DELETE);
         service.delete(id);
         return Map.of("status", "deleted");
     }

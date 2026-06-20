@@ -1,5 +1,7 @@
 package io.litealert.notify.web;
 
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.notify.NotifyTargetService;
 import io.litealert.notify.domain.NotifyTarget;
 import jakarta.validation.constraints.NotBlank;
@@ -27,14 +29,17 @@ import java.util.Map;
 public class NotifyTargetController {
 
     private final NotifyTargetService service;
+    private final PermissionService permissionService;
 
     @GetMapping
     public List<Map<String, Object>> list() {
+        permissionService.require(Permissions.CONTACT_VIEW);
         return service.listMine().stream().map(this::view).toList();
     }
 
     @PostMapping
     public Map<String, Object> create(@RequestBody CreateRequest req) {
+        permissionService.require(Permissions.CONTACT_CREATE);
         NotifyTarget.Type type = req.type() == null
                 ? NotifyTarget.Type.EMAIL
                 : NotifyTarget.Type.valueOf(req.type());
@@ -43,11 +48,13 @@ public class NotifyTargetController {
 
     @PatchMapping("/{id}")
     public Map<String, Object> update(@PathVariable String id, @RequestBody UpdateRequest req) {
+        permissionService.require(Permissions.CONTACT_UPDATE);
         return view(service.update(id, req.label(), req.enabled(), req.endpoint(), req.secret()));
     }
 
     @DeleteMapping("/{id}")
     public Map<String, String> delete(@PathVariable String id) {
+        permissionService.require(Permissions.CONTACT_DELETE);
         service.delete(id);
         return Map.of("status", "deleted");
     }

@@ -1,7 +1,10 @@
 package io.litealert.apikey.web;
 
+import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.apikey.ApiKeyService;
 import io.litealert.apikey.domain.ApiKey;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,19 +25,37 @@ import java.util.Map;
 public class ApiKeyController {
 
     private final ApiKeyService service;
+    private final PermissionService permissionService;
+    private final SystemSettingsService settingsService;
 
     @GetMapping
     public List<Map<String, Object>> list() {
+        permissionService.require(Permissions.APIKEY_VIEW);
         return service.listMine().stream().map(this::toView).toList();
     }
 
     @GetMapping("/covering")
     public List<Map<String, Object>> covering(@RequestParam String topicId) {
+        permissionService.require(Permissions.APIKEY_VIEW);
         return service.findCovering(topicId).stream().map(this::toView).toList();
+    }
+
+    @GetMapping("/settings")
+    public Map<String, Object> settings() {
+        permissionService.require(Permissions.APIKEY_VIEW);
+        var rateLimit = settingsService.current().getRateLimit();
+        return Map.of(
+                "rateLimit", Map.of(
+                        "perApiKeyPerMinute", rateLimit.getPerApiKeyPerMinute(),
+                        "perTopicPerMinute", rateLimit.getPerTopicPerMinute(),
+                        "perIpPerMinute", rateLimit.getPerIpPerMinute()
+                )
+        );
     }
 
     @PostMapping
     public Map<String, Object> create(@RequestBody ApiKeyService.CreateRequest req) {
+        permissionService.require(Permissions.APIKEY_CREATE);
         ApiKeyService.CreateResult r = service.create(req);
         Map<String, Object> view = toView(r.apiKey());
         // unique field — caller MUST persist the plaintext now; never returned again
@@ -46,16 +67,19 @@ public class ApiKeyController {
     @PatchMapping("/{id}")
     public Map<String, Object> update(@PathVariable String id,
                                       @RequestBody ApiKeyService.UpdateRequest req) {
+        permissionService.require(Permissions.APIKEY_UPDATE);
         return toView(service.update(id, req));
     }
 
     @PostMapping("/{id}/revoke")
     public Map<String, Object> revoke(@PathVariable String id) {
+        permissionService.require(Permissions.APIKEY_UPDATE);
         return toView(service.revoke(id));
     }
 
     @PostMapping("/{id}/rotate")
     public Map<String, Object> rotate(@PathVariable String id) {
+        permissionService.require(Permissions.APIKEY_ROTATE);
         ApiKeyService.CreateResult r = service.rotate(id);
         Map<String, Object> view = new java.util.LinkedHashMap<>(toView(r.apiKey()));
         view.put("fullKey", r.fullKey());
@@ -64,6 +88,7 @@ public class ApiKeyController {
 
     @DeleteMapping("/{id}")
     public Map<String, String> delete(@PathVariable String id) {
+        permissionService.require(Permissions.APIKEY_DELETE);
         service.delete(id);
         return Map.of("status", "deleted");
     }

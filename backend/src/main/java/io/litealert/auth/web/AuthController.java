@@ -52,8 +52,7 @@ public class AuthController {
         return Map.of(
                 "id", u.getId(),
                 "username", u.getUsername(),
-                "role", u.getRole().name(),
-                "permissions", u.getPermissions() == null ? java.util.List.of() : u.getPermissions().stream().map(Enum::name).toList(),
+                "permissions", java.util.List.of(),
                 "enabled", u.isEnabled(),
                 "createdAt", u.getCreatedAt() != null ? u.getCreatedAt().toString() : Instant.EPOCH.toString());
     }

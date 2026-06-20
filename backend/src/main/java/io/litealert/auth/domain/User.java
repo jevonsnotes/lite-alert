@@ -1,6 +1,10 @@
 package io.litealert.auth.domain;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.mybatisflex.annotation.Column;
+import com.mybatisflex.annotation.Id;
+import com.mybatisflex.annotation.KeyType;
+import com.mybatisflex.annotation.Table;
 import io.litealert.common.crypto.Encrypted;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,20 +12,19 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 @Data
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Table("la_user")
 public class User {
 
-    public enum Role { ADMIN, USER }
-    public enum Permission { DELIVERY_PAYLOAD_READ }
-
+    @Id(keyType = KeyType.None)
     private String id;
+
+    @Column
     private String username;
 
     /**
@@ -29,19 +32,21 @@ public class User {
      * Never returned to the API layer.
      */
     @Encrypted
+    @Column(value = "password_hash")
     private String passwordHash;
 
-    private Role role;
-    @Builder.Default
-    private Set<Permission> permissions = new LinkedHashSet<>();
+    @Column
     private boolean enabled;
 
+    @Column(value = "created_at")
     private Instant createdAt;
-    private String createdBy;
-    private Instant updatedAt;
-    private Instant lastLoginAt;
 
-    public boolean hasPermission(Permission permission) {
-        return permissions != null && permissions.contains(permission);
-    }
+    @Column(value = "created_by")
+    private String createdBy;
+
+    @Column(value = "updated_at")
+    private Instant updatedAt;
+
+    @Column(value = "last_login_at")
+    private Instant lastLoginAt;
 }

@@ -1,6 +1,7 @@
 package io.litealert.namespace;
 
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -40,12 +41,12 @@ class NamespaceServiceTest {
         topicStore = mock(TopicStore.class);
         subscriptionStore = mock(SubscriptionStore.class);
         CurrentUser currentUser = mock(CurrentUser.class);
+        PermissionService permissionService = mock(PermissionService.class);
         audit = mock(AuditLogger.class);
         when(currentUser.idOrThrow()).thenReturn("u_1");
-        when(currentUser.isAdmin()).thenReturn(false);
         when(store.save(any(Namespace.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(topicStore.save(any(Topic.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new NamespaceService(store, topicStore, subscriptionStore, currentUser, audit);
+        service = new NamespaceService(store, topicStore, subscriptionStore, currentUser, audit, permissionService);
     }
 
     @Test

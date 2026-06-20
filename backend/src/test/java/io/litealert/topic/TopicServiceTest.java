@@ -1,6 +1,7 @@
 package io.litealert.topic;
 
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -37,11 +38,11 @@ class TopicServiceTest {
         subscriptionStore = mock(SubscriptionStore.class);
         NamespaceService namespaceService = mock(NamespaceService.class);
         CurrentUser currentUser = mock(CurrentUser.class);
+        PermissionService permissionService = mock(PermissionService.class);
         audit = mock(AuditLogger.class);
         when(currentUser.idOrThrow()).thenReturn("u_1");
-        when(currentUser.isAdmin()).thenReturn(false);
         when(store.save(any(Topic.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new TopicService(store, namespaceService, subscriptionStore, currentUser, audit);
+        service = new TopicService(store, namespaceService, subscriptionStore, currentUser, audit, permissionService);
     }
 
     @Test

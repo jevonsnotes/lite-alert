@@ -42,7 +42,7 @@ type AuditResp = {
     parseFailed: number
     matched: number
     visible: number
-    isAdmin: boolean
+    canViewAll: boolean
     userId: string
   }
 }
@@ -279,9 +279,6 @@ function prettyPayload(payload: any) {
       <h2 class="page-h">调用记录 / 审计日志</h2>
       <span class="muted-inline">
         当前用户：<code>{{ auth.user?.username }}</code>
-        <el-tag size="small" :type="auth.isAdmin ? 'danger' : 'info'" style="margin-left: 6px">
-          {{ auth.user?.role }}
-        </el-tag>
       </span>
     </div>
 

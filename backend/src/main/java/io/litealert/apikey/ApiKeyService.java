@@ -3,6 +3,8 @@ package io.litealert.apikey;
 import io.litealert.apikey.domain.ApiKey;
 import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -37,15 +39,17 @@ public class ApiKeyService {
     private final NamespaceService namespaceService;
     private final TopicService topicService;
     private final AuditLogger audit;
+    private final PermissionService permissionService;
 
     public List<ApiKey> listMine() {
+        if (permissionService.has(Permissions.APIKEY_VIEW_ALL)) return store.findAll();
         return store.findByOwner(currentUser.idOrThrow());
     }
 
     public ApiKey getOrThrow(String id) {
         ApiKey k = store.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "api key not found"));
-        if (!currentUser.isAdmin() && !k.getOwnerId().equals(currentUser.idOrThrow())) {
+        if (!k.getOwnerId().equals(currentUser.idOrThrow()) && !permissionService.has(Permissions.APIKEY_VIEW_ALL)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return k;
@@ -185,12 +189,12 @@ public class ApiKeyService {
         for (ApiKey.Scope s : scopes) {
             if (s.getType() == ApiKey.ScopeType.NAMESPACE) {
                 var ns = namespaceService.getOrThrow(s.getId());
-                if (!currentUser.isAdmin() && !me.equals(ns.getOwnerId())) {
+                if (!me.equals(ns.getOwnerId()) && !permissionService.has(Permissions.NAMESPACE_VIEW_ALL)) {
                     throw new BusinessException(ErrorCode.APIKEY_OWNED_BY_OTHER);
                 }
             } else if (s.getType() == ApiKey.ScopeType.TOPIC) {
                 Topic t = topicService.getOrThrow(s.getId());
-                if (!currentUser.isAdmin() && !me.equals(t.getOwnerId())) {
+                if (!me.equals(t.getOwnerId()) && !permissionService.has(Permissions.TOPIC_VIEW_ALL)) {
                     throw new BusinessException(ErrorCode.APIKEY_OWNED_BY_OTHER);
                 }
             } else {

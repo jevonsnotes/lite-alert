@@ -25,31 +25,58 @@ const draft = reactive<{ name: string; description: string; permissions: string[
 })
 
 const permTreeData = [
-  { label: '系统概览', id: 'g_dashboard', children: [{ label: 'DASHBOARD_VIEW', id: 'DASHBOARD_VIEW' }] },
+  { label: '系统概览', id: 'g_dashboard', children: [
+    { label: '仪表盘_查看（DASHBOARD_VIEW）', id: 'DASHBOARD_VIEW' },
+    { label: '全局统计（STATS_VIEW）', id: 'STATS_VIEW' },
+    { label: '全局统计（所有）（STATS_VIEW_ALL）', id: 'STATS_VIEW_ALL' }] },
   { label: '命名空间', id: 'g_ns', children: [
-    { label: 'NAMESPACE_VIEW', id: 'NAMESPACE_VIEW' }, { label: 'NAMESPACE_CREATE', id: 'NAMESPACE_CREATE' },
-    { label: 'NAMESPACE_DISABLE', id: 'NAMESPACE_DISABLE' }, { label: 'NAMESPACE_DELETE', id: 'NAMESPACE_DELETE' }] },
+    { label: '命名空间_查看（NAMESPACE_VIEW）', id: 'NAMESPACE_VIEW' },
+    { label: '命名空间_查看（所有）（NAMESPACE_VIEW_ALL）', id: 'NAMESPACE_VIEW_ALL' },
+    { label: '命名空间_创建（NAMESPACE_CREATE）', id: 'NAMESPACE_CREATE' },
+    { label: '命名空间_编辑（NAMESPACE_UPDATE）', id: 'NAMESPACE_UPDATE' },
+    { label: '命名空间_禁用（NAMESPACE_DISABLE）', id: 'NAMESPACE_DISABLE' },
+    { label: '命名空间_删除（NAMESPACE_DELETE）', id: 'NAMESPACE_DELETE' }] },
   { label: 'Topic', id: 'g_topic', children: [
-    { label: 'TOPIC_VIEW', id: 'TOPIC_VIEW' }, { label: 'TOPIC_CREATE', id: 'TOPIC_CREATE' },
-    { label: 'TOPIC_UPDATE', id: 'TOPIC_UPDATE' }, { label: 'TOPIC_PUBLISH', id: 'TOPIC_PUBLISH' },
-    { label: 'TOPIC_DISABLE', id: 'TOPIC_DISABLE' }, { label: 'TOPIC_DELETE', id: 'TOPIC_DELETE' }] },
+    { label: 'Topic_查看（TOPIC_VIEW）', id: 'TOPIC_VIEW' },
+    { label: 'Topic_查看（所有）（TOPIC_VIEW_ALL）', id: 'TOPIC_VIEW_ALL' },
+    { label: 'Topic_创建（TOPIC_CREATE）', id: 'TOPIC_CREATE' },
+    { label: 'Topic_编辑（TOPIC_UPDATE）', id: 'TOPIC_UPDATE' },
+    { label: 'Topic_发布（TOPIC_PUBLISH）', id: 'TOPIC_PUBLISH' },
+    { label: 'Topic_禁用（TOPIC_DISABLE）', id: 'TOPIC_DISABLE' },
+    { label: 'Topic_删除（TOPIC_DELETE）', id: 'TOPIC_DELETE' }] },
   { label: 'ApiKey', id: 'g_ak', children: [
-    { label: 'APIKEY_VIEW', id: 'APIKEY_VIEW' }, { label: 'APIKEY_CREATE', id: 'APIKEY_CREATE' },
-    { label: 'APIKEY_UPDATE', id: 'APIKEY_UPDATE' }, { label: 'APIKEY_ROTATE', id: 'APIKEY_ROTATE' },
-    { label: 'APIKEY_DELETE', id: 'APIKEY_DELETE' }] },
+    { label: 'ApiKey_查看（APIKEY_VIEW）', id: 'APIKEY_VIEW' },
+    { label: 'ApiKey_查看（所有）（APIKEY_VIEW_ALL）', id: 'APIKEY_VIEW_ALL' },
+    { label: 'ApiKey_创建（APIKEY_CREATE）', id: 'APIKEY_CREATE' },
+    { label: 'ApiKey_编辑（APIKEY_UPDATE）', id: 'APIKEY_UPDATE' },
+    { label: 'ApiKey_轮换（APIKEY_ROTATE）', id: 'APIKEY_ROTATE' },
+    { label: 'ApiKey_删除（APIKEY_DELETE）', id: 'APIKEY_DELETE' }] },
   { label: '通知目标', id: 'g_contact', children: [
-    { label: 'CONTACT_VIEW', id: 'CONTACT_VIEW' }, { label: 'CONTACT_CREATE', id: 'CONTACT_CREATE' },
-    { label: 'CONTACT_UPDATE', id: 'CONTACT_UPDATE' }, { label: 'CONTACT_DELETE', id: 'CONTACT_DELETE' }] },
+    { label: '通知目标_查看（CONTACT_VIEW）', id: 'CONTACT_VIEW' },
+    { label: '通知目标_查看（所有）（CONTACT_VIEW_ALL）', id: 'CONTACT_VIEW_ALL' },
+    { label: '通知目标_创建（CONTACT_CREATE）', id: 'CONTACT_CREATE' },
+    { label: '通知目标_编辑（CONTACT_UPDATE）', id: 'CONTACT_UPDATE' },
+    { label: '通知目标_删除（CONTACT_DELETE）', id: 'CONTACT_DELETE' }] },
   { label: '调用记录与投递', id: 'g_audit', children: [
-    { label: 'AUDIT_VIEW', id: 'AUDIT_VIEW' }, { label: 'DELIVERY_VIEW', id: 'DELIVERY_VIEW' },
-    { label: 'DELIVERY_PAYLOAD_READ', id: 'DELIVERY_PAYLOAD_READ' }] },
+    { label: '审计日志_查看（AUDIT_VIEW）', id: 'AUDIT_VIEW' },
+    { label: '审计日志_查看（所有）（AUDIT_VIEW_ALL）', id: 'AUDIT_VIEW_ALL' },
+    { label: '投递记录_查看（DELIVERY_VIEW）', id: 'DELIVERY_VIEW' },
+    { label: '投递记录_查看报文（DELIVERY_PAYLOAD_READ）', id: 'DELIVERY_PAYLOAD_READ' }] },
   { label: '系统管理', id: 'g_admin', children: [
-    { label: 'USER_VIEW', id: 'USER_VIEW' }, { label: 'USER_CREATE', id: 'USER_CREATE' },
-    { label: 'USER_UPDATE', id: 'USER_UPDATE' }, { label: 'USER_DELETE', id: 'USER_DELETE' },
-    { label: 'ROLE_VIEW', id: 'ROLE_VIEW' }, { label: 'ROLE_CREATE', id: 'ROLE_CREATE' },
-    { label: 'ROLE_UPDATE', id: 'ROLE_UPDATE' }, { label: 'ROLE_DELETE', id: 'ROLE_DELETE' },
-    { label: 'SYSTEM_SETTINGS_VIEW', id: 'SYSTEM_SETTINGS_VIEW' },
-    { label: 'SYSTEM_SETTINGS_UPDATE', id: 'SYSTEM_SETTINGS_UPDATE' }] }
+    { label: '用户_查看（USER_VIEW）', id: 'USER_VIEW' },
+    { label: '用户_创建（USER_CREATE）', id: 'USER_CREATE' },
+    { label: '用户_编辑（USER_UPDATE）', id: 'USER_UPDATE' },
+    { label: '用户_删除（USER_DELETE）', id: 'USER_DELETE' },
+    { label: '角色_查看（ROLE_VIEW）', id: 'ROLE_VIEW' },
+    { label: '角色_创建（ROLE_CREATE）', id: 'ROLE_CREATE' },
+    { label: '角色_编辑（ROLE_UPDATE）', id: 'ROLE_UPDATE' },
+    { label: '角色_删除（ROLE_DELETE）', id: 'ROLE_DELETE' },
+    { label: '系统_查看健康（SYSTEM_HEALTH_VIEW）', id: 'SYSTEM_HEALTH_VIEW' },
+    { label: '系统_查看设置（SYSTEM_SETTINGS_VIEW）', id: 'SYSTEM_SETTINGS_VIEW' },
+    { label: '系统_编辑设置（SYSTEM_SETTINGS_UPDATE）', id: 'SYSTEM_SETTINGS_UPDATE' },
+    { label: '系统_查看邮件配置（MAIL_CONFIG_VIEW）', id: 'MAIL_CONFIG_VIEW' },
+    { label: '系统_编辑邮件配置（MAIL_CONFIG_UPDATE）', id: 'MAIL_CONFIG_UPDATE' },
+    { label: '系统_邮件测试（SMTP_TEST）', id: 'SMTP_TEST' }] }
 ]
 
 function filterPermNode(value: string, data: any) {
@@ -59,7 +86,7 @@ watch(permSearch, v => permTreeRef.value?.filter(v))
 
 function onPermCheckChange(_d: any, checked: boolean, indeterminate: boolean) {
   // el-tree check-change; collect keys after state update
-  setTimeout(() => { if (permTreeRef.value) permCheckKeys.value = permTreeRef.value.getCheckedKeys().filter(k => !String(k).startsWith('g_')) }, 0)
+  setTimeout(() => { if (permTreeRef.value) permCheckKeys.value = permTreeRef.value.getCheckedKeys().filter((k: string) => !String(k).startsWith('g_')) }, 0)
 }
 
 async function load() {
@@ -129,8 +156,8 @@ async function remove(role: Role) {
       </el-table-column>
       <el-table-column label="操作" width="160">
         <template #default="{ row }">
-          <el-button size="small" link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" link type="danger" :disabled="row.systemBuiltin" @click="remove(row)">删除</el-button>
+          <el-button size="small" link type="primary" @click="openEdit(row as Role)">编辑</el-button>
+          <el-button size="small" link type="danger" :disabled="row.systemBuiltin" @click="remove(row as Role)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

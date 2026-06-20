@@ -16,7 +16,8 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'dashboard',
         name: 'dashboard',
-        component: () => import('@/views/Dashboard.vue')
+        component: () => import('@/views/Dashboard.vue'),
+        meta: { permission: 'DASHBOARD_VIEW' }
       },
       {
         path: 'namespaces',
@@ -48,7 +49,7 @@ const routes: RouteRecordRaw[] = [
         path: 'admin/users',
         name: 'admin-users',
         component: () => import('@/views/AdminUsers.vue'),
-        meta: { adminOnly: true }
+        meta: { permission: 'USER_VIEW' }
       },
       {
         path: 'admin/roles',
@@ -60,7 +61,7 @@ const routes: RouteRecordRaw[] = [
         path: 'admin/system',
         name: 'admin-system',
         component: () => import('@/views/AdminSystem.vue'),
-        meta: { adminOnly: true }
+        meta: { permission: 'SYSTEM_SETTINGS_VIEW' }
       }
     ]
   },
@@ -79,9 +80,6 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!auth.isLoggedIn && !to.meta.public) {
     return { name: 'login', query: { redirect: to.fullPath } }
-  }
-  if (to.meta.adminOnly && !auth.isAdmin) {
-    return { name: 'dashboard' }
   }
   if (to.meta.permission && !auth.hasPermission(String(to.meta.permission))) {
     return { name: 'dashboard' }

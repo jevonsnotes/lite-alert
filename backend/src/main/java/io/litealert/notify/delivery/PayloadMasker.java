@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.litealert.admin.settings.SystemSettings;
 import io.litealert.admin.settings.SystemSettingsService;
-import io.litealert.auth.domain.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -20,10 +19,6 @@ public class PayloadMasker {
     private final ObjectMapper objectMapper;
     private final SystemSettingsService settingsService;
 
-    public String view(String payload, User user) {
-        return view(payload, canReadFull(user));
-    }
-
     public String view(String payload, boolean canReadFull) {
         if (canReadFull) return payload;
         try {
@@ -34,10 +29,6 @@ public class PayloadMasker {
         } catch (Exception e) {
             return "***masked***";
         }
-    }
-
-    public boolean canReadFull(User user) {
-        return user != null && user.hasPermission(User.Permission.DELIVERY_PAYLOAD_READ);
     }
 
     private Set<String> getSensitiveWords() {

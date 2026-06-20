@@ -1,6 +1,10 @@
 package io.litealert.notify.domain;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.mybatisflex.annotation.Column;
+import com.mybatisflex.annotation.Id;
+import com.mybatisflex.annotation.KeyType;
+import com.mybatisflex.annotation.Table;
 import io.litealert.common.crypto.Encrypted;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,6 +28,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Table("la_notify_target")
 public class NotifyTarget {
 
     public enum Type {
@@ -34,20 +39,31 @@ public class NotifyTarget {
         WEBHOOK           // Generic outbound HTTP — body composed from per-topic template
     }
 
+    @Id(keyType = KeyType.None)
     private String id;
+
+    @Column(value = "user_id")
     private String userId;
+
+    @Column
     private String label;
 
+    @Column
     private Type type;
 
     /** email address OR webhook URL — encrypted at rest. */
     @Encrypted
+    @Column
     private String endpoint;
 
     /** Optional channel-specific secret (DingTalk signed mode, etc.). */
     @Encrypted
+    @Column
     private String secret;
 
+    @Column
     private boolean enabled;
+
+    @Column(value = "created_at")
     private Instant createdAt;
 }

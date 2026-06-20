@@ -1,6 +1,8 @@
 package io.litealert.namespace;
 
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -29,16 +31,17 @@ public class NamespaceService {
     private final SubscriptionStore subscriptionStore;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
+    private final PermissionService permissionService;
 
     public List<Namespace> listVisible() {
-        if (currentUser.isAdmin()) return store.findAll();
+        if (permissionService.has(Permissions.NAMESPACE_VIEW_ALL)) return store.findAll();
         return store.findByOwner(currentUser.idOrThrow());
     }
 
     public Namespace getOrThrow(String id) {
         Namespace n = store.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "namespace not found"));
-        if (!currentUser.isAdmin() && !n.getOwnerId().equals(currentUser.idOrThrow())) {
+        if (!n.getOwnerId().equals(currentUser.idOrThrow()) && !permissionService.has(Permissions.NAMESPACE_VIEW_ALL)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return n;
@@ -178,7 +181,6 @@ public class NamespaceService {
         if (hasPublished) {
             throw new BusinessException(ErrorCode.NAMESPACE_NOT_EMPTY);
         }
-        // also drop draft/disabled topics under this namespace
         topicStore.deleteByNamespace(id);
         store.delete(id);
         audit.log("namespace.delete", Map.of(

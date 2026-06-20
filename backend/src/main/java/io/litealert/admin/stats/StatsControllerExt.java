@@ -1,5 +1,7 @@
 package io.litealert.admin.stats;
 
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,20 +20,24 @@ public class StatsControllerExt {
 
     private final StatsService statsService;
     private final TopicStore topicStore;
+    private final PermissionService permissionService;
 
-    public StatsControllerExt(StatsService statsService, TopicStore topicStore) {
+    public StatsControllerExt(StatsService statsService, TopicStore topicStore, PermissionService permissionService) {
         this.statsService = statsService;
         this.topicStore = topicStore;
+        this.permissionService = permissionService;
     }
 
     @GetMapping("/topic")
     public Map<String, StatsService.TopicSummary> topicStats(@RequestParam String topicId) {
+        permissionService.require(Permissions.STATS_VIEW);
         List<String> ids = List.of(topicId.split(","));
         return statsService.topicSummary(ids);
     }
 
     @GetMapping("/namespace")
     public Map<String, Object> namespaceStats(@RequestParam String namespaceId) {
+        permissionService.require(Permissions.STATS_VIEW);
         List<Topic> topics = topicStore.findByNamespace(namespaceId);
         List<String> ids = topics.stream().map(Topic::getId).collect(Collectors.toList());
         Map<String, StatsService.TopicSummary> summaries = statsService.topicSummary(ids);

@@ -6,6 +6,8 @@ import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.apikey.domain.ApiKey;
 import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.db.DbJson;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
@@ -31,12 +33,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class StatsController {
 
-    private final CurrentUser currentUser;
+    private final PermissionService permissionService;
     private final SystemSettingsService settingsService;
     private final JdbcTemplate jdbc;
     private final DbJson json;
     private final TopicStore topicStore;
     private final ApiKeyStore apiKeyStore;
+    private final CurrentUser currentUser;
 
     @GetMapping("/daily")
     public Map<String, Object> daily(
@@ -46,7 +49,9 @@ public class StatsController {
             @RequestParam(required = false) String topicId,
             @RequestParam(required = false) String apiKeyId) {
 
-        currentUser.requireAdmin();
+        permissionService.require(Permissions.STATS_VIEW);
+        boolean canViewAll = permissionService.has(Permissions.STATS_VIEW_ALL);
+        String myId = permissionService.has(Permissions.STATS_VIEW) ? currentUser.idOrThrow() : null;
 
         Dimension dim = resolveDimension(dimension);
         Window window = window(value, unit);
@@ -59,6 +64,7 @@ public class StatsController {
             String day = ((Timestamp) obj.get("ts")).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
             Counters c = buckets.get(day);
             if (c == null || !matchesDimension(obj, dim, topicId, apiKeyId)) continue;
+            if (!canViewAll && !isVisibleTo(obj, myId)) continue;
             add(c, (String) obj.get("type"));
         }
 
@@ -81,7 +87,9 @@ public class StatsController {
             @RequestParam(required = false) String topicId,
             @RequestParam(required = false) String apiKeyId) {
 
-        currentUser.requireAdmin();
+        permissionService.require(Permissions.STATS_VIEW);
+        boolean canViewAll = permissionService.has(Permissions.STATS_VIEW_ALL);
+        String myId = permissionService.has(Permissions.STATS_VIEW) ? currentUser.idOrThrow() : null;
 
         Dimension dim = resolveDimension(dimension);
         if (dim == Dimension.OVERALL) dim = Dimension.TOPIC;
@@ -93,6 +101,7 @@ public class StatsController {
             Object key = dim == Dimension.TOPIC ? obj.get("topicId") : obj.get("apiKeyId");
             if (!(key instanceof String s) || s.isBlank()) continue;
             if (selectedId != null && !selectedId.equals(s)) continue;
+            if (!canViewAll && !statsVisibleTo(obj, myId)) continue;
             Counters c = counters.computeIfAbsent(s, ignored -> new Counters());
             add(c, (String) obj.get("type"));
         }
@@ -195,6 +204,20 @@ public class StatsController {
                 yield apiKeyId == null || apiKeyId.isBlank() || apiKeyId.equals(s);
             }
         };
+    }
+
+    private boolean isVisibleTo(Map<String, Object> obj, String userId) {
+        return statsVisibleTo(obj, userId);
+    }
+
+    private boolean statsVisibleTo(Map<String, Object> obj, String userId) {
+        Object actor = obj.get("actor");
+        if (actor != null && userId.equals(actor)) return true;
+        Object owner = obj.get("apiKeyOwner");
+        if (owner != null && userId.equals(owner)) return true;
+        Object tid = obj.get("topicId");
+        if (tid instanceof String s) return topicStore.findById(s).map(t -> userId.equals(t.getOwnerId())).orElse(false);
+        return false;
     }
 
     private SystemSettings.Span resolveSpan(Integer value, String unitStr) {

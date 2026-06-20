@@ -1,6 +1,5 @@
 package io.litealert.admin.web;
 
-import io.litealert.auth.domain.User;
 import io.litealert.common.audit.AuditLogger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,7 +41,9 @@ class StatsControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("admin", "n/a", io.litealert.auth.CurrentUser.authoritiesFor(User.Role.ADMIN)));
+                new UsernamePasswordAuthenticationToken("u_admin", "n/a", List.of()));
+        jdbc.update("delete from la_user_role");
+        jdbc.update("insert into la_user_role(user_id, role_id) values ('u_admin', 'r_super_admin')");
         jdbc.update("delete from la_audit_log");
         jdbc.update("delete from la_api_key");
         jdbc.update("delete from la_topic");

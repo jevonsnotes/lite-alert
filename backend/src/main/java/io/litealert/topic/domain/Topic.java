@@ -4,6 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.mybatisflex.annotation.Column;
+import com.mybatisflex.annotation.Id;
+import com.mybatisflex.annotation.KeyType;
+import com.mybatisflex.annotation.Table;
+import io.litealert.common.db.JacksonTypeHandler;
 import io.litealert.notify.domain.NotifyTarget;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,6 +35,10 @@ import java.util.Map;
  * <p>Legacy fields {@code transform} / {@code notifyTemplate} are still
  * deserialized so older topic files keep working; they're folded into the
  * EMAIL channel template at load time and are not written back.
+ *
+ * <p>JSON columns use {@link JacksonTypeHandler} for automatic serialization,
+ * except {@code templates} which uses {@link JsonChannelTemplatesTypeHandler}
+ * to correctly handle the generic Map type.
  */
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,6 +46,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Table("la_topic")
 public class Topic {
 
     public enum Status { DRAFT, PUBLISHED, DISABLED }
@@ -44,36 +54,58 @@ public class Topic {
     public enum AuthMode { API_KEY, NONE }
     public enum KeyLocation { HEADER, QUERY }
 
+    @Id(keyType = KeyType.None)
     private String id;
+
+    @Column(value = "namespace_id")
     private String namespaceId;
+
+    @Column(value = "namespace_name")
     private String namespaceName;
+
+    @Column
     private String name;
+
+    @Column
     private String description;
+
+    @Column(value = "owner_id")
     private String ownerId;
 
+    @Column
     private Status status;
 
     @Builder.Default
+    @Column(value = "auth_json", typeHandler = JacksonTypeHandler.class)
     private Auth auth = new Auth();
 
     /** JSON Schema (Draft 2020-12) for the inbound payload. */
+    @Column(value = "inbound_format_json", typeHandler = JacksonTypeHandler.class)
     private JsonNode inboundFormat;
 
     /** Per-channel notify configuration. */
     @Builder.Default
+    @Column(value = "templates_json", typeHandler = JsonChannelTemplatesTypeHandler.class)
     private Map<NotifyTarget.Type, ChannelTemplate> templates = new EnumMap<>(NotifyTarget.Type.class);
 
     // ---------- Legacy compatibility ----------
     /** @deprecated use {@link #getTemplates()} (WEBHOOK entry's {@code transform}). */
     @Deprecated
+    @Column(value = "transform_json", typeHandler = JacksonTypeHandler.class)
     private Transform transform;
 
     /** @deprecated use {@link #getTemplates()} (EMAIL entry). */
     @Deprecated
+    @Column(value = "notify_template_json", typeHandler = JacksonTypeHandler.class)
     private NotifyTemplate notifyTemplate;
 
+    @Column(value = "created_at")
     private Instant createdAt;
+
+    @Column(value = "updated_at")
     private Instant updatedAt;
+
+    @Column(value = "published_at")
     private Instant publishedAt;
 
     /**

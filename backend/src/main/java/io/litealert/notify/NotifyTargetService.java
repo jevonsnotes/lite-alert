@@ -1,6 +1,8 @@
 package io.litealert.notify;
 
 import io.litealert.auth.CurrentUser;
+import io.litealert.auth.permission.PermissionService;
+import io.litealert.auth.permission.Permissions;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
@@ -25,15 +27,17 @@ public class NotifyTargetService {
     private final NotifyTargetStore store;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
+    private final PermissionService permissionService;
 
     public List<NotifyTarget> listMine() {
+        if (permissionService.has(Permissions.CONTACT_VIEW_ALL)) return store.findAll();
         return store.findByUser(currentUser.idOrThrow());
     }
 
     public NotifyTarget getOrThrow(String id) {
         NotifyTarget t = store.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "target not found"));
-        if (!currentUser.isAdmin() && !t.getUserId().equals(currentUser.idOrThrow())) {
+        if (!t.getUserId().equals(currentUser.idOrThrow()) && !permissionService.has(Permissions.CONTACT_VIEW_ALL)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return t;
