@@ -79,6 +79,8 @@ public class TopicService {
                 .description(req.description())
                 .ownerId(ns.getOwnerId())
                 .status(Topic.Status.DRAFT)
+                .sync(req.sync())
+                .syncTimeout(req.syncTimeout())
                 .auth(auth)
                 .inboundFormat(req.inboundFormat())
                 .createdAt(Instant.now())
@@ -126,6 +128,12 @@ public class TopicService {
             t.setInboundFormat(req.inboundFormat());
         }
 
+        if (req.sync() != null) {
+            t.setSync(req.sync());
+        }
+        if (req.syncTimeout() != null) {
+            t.setSyncTimeout(req.syncTimeout());
+        }
         if (req.auth() != null) {
             Topic.Auth next = req.auth();
             next.setMode(Topic.AuthMode.API_KEY);
@@ -236,7 +244,9 @@ public class TopicService {
             String authMode,
             String keyLocation,
             java.util.List<String> ipWhitelist,
-            JsonNode inboundFormat
+            JsonNode inboundFormat,
+            boolean sync,
+            Integer syncTimeout
     ) {}
 
     public record UpdateRequest(
@@ -244,6 +254,8 @@ public class TopicService {
             String description,
             Topic.Auth auth,
             JsonNode inboundFormat,
-            java.util.Map<io.litealert.notify.domain.NotifyTarget.Type, Topic.ChannelTemplate> templates
+            java.util.Map<io.litealert.notify.domain.NotifyTarget.Type, Topic.ChannelTemplate> templates,
+            Boolean sync,
+            Integer syncTimeout
     ) {}
 }

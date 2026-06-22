@@ -74,6 +74,14 @@ public class Topic {
     @Column
     private Status status;
 
+    /** True = synchronous delivery (caller waits for result). */
+    @Column
+    private boolean sync = false;
+
+    /** Per-topic sync timeout in seconds. Null = use global default, 0 = no limit. */
+    @Column("sync_timeout")
+    private Integer syncTimeout;
+
     @Builder.Default
     @Column(value = "auth_json", typeHandler = JacksonTypeHandler.class)
     private Auth auth = new Auth();

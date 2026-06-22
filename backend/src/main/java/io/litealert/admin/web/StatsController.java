@@ -1,6 +1,5 @@
 package io.litealert.admin.web;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import io.litealert.admin.settings.SystemSettings;
 import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.apikey.domain.ApiKey;
@@ -8,7 +7,6 @@ import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.auth.CurrentUser;
 import io.litealert.auth.permission.PermissionService;
 import io.litealert.auth.permission.Permissions;
-import io.litealert.common.db.DbJson;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +34,6 @@ public class StatsController {
     private final PermissionService permissionService;
     private final SystemSettingsService settingsService;
     private final JdbcTemplate jdbc;
-    private final DbJson json;
     private final TopicStore topicStore;
     private final ApiKeyStore apiKeyStore;
     private final CurrentUser currentUser;
@@ -159,13 +156,13 @@ public class StatsController {
     }
 
     private List<Map<String, Object>> auditRows(Window window) {
-        return jdbc.query("select ts, type, attrs_json from la_audit_log where ts >= ? and ts <= ? order by ts asc",
+        return jdbc.query("select ts, type, topic_id, api_key_id from la_audit_log where ts >= ? and ts <= ? order by ts asc",
                 (rs, rowNum) -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("ts", rs.getTimestamp("ts"));
                     row.put("type", rs.getString("type"));
-                    Map<String, Object> attrs = json.read(rs.getString("attrs_json"), new TypeReference<>() {}, new HashMap<>());
-                    row.putAll(attrs);
+                    row.put("topicId", rs.getString("topic_id"));
+                    row.put("apiKeyId", rs.getString("api_key_id"));
                     return row;
                 }, Timestamp.valueOf(window.from().atStartOfDay()), Timestamp.valueOf(window.today().plusDays(1).atStartOfDay().minusNanos(1)));
     }
@@ -221,12 +218,12 @@ public class StatsController {
     }
 
     private SystemSettings.Span resolveSpan(Integer value, String unitStr) {
-        SystemSettings.Span def = settingsService.current().getDashboardDefaultTrend();
-        if (value == null && (unitStr == null || unitStr.isBlank())) return def;
+        SystemSettings.Span span = settingsService.current().getDashboardDefaultTrend();
+        if (value == null && (unitStr == null || unitStr.isBlank())) return span;
         SystemSettings.Unit u;
-        try { u = unitStr == null ? def.getUnit() : SystemSettings.Unit.valueOf(unitStr.toUpperCase()); }
-        catch (IllegalArgumentException e) { u = def.getUnit(); }
-        int v = value == null ? def.getValue() : Math.max(1, value);
+        try { u = unitStr == null ? span.getUnit() : SystemSettings.Unit.valueOf(unitStr.toUpperCase()); }
+        catch (IllegalArgumentException e) { u = span.getUnit(); }
+        int v = value == null ? span.getValue() : Math.max(1, value);
         return new SystemSettings.Span(v, u);
     }
 

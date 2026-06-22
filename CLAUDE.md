@@ -6,22 +6,23 @@ Lite-Alert 是一个默认内置 H2、可切换外部数据库、前后端一体
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、MyBatis-Flex、JDBC、H2/MySQL/PostgreSQL、Jasypt、Caffeine、Jackson、Maven。
+- 后端：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、Spring Boot Actuator、MyBatis-Flex、JDBC、H2/MySQL/PostgreSQL、Flyway、Jasypt、Caffeine、Jackson、Lombok、Maven。
 - 前端：Vue 3、TypeScript、Vite、Element Plus、Pinia、Vue Router、Axios、ECharts。
 - 存储：默认 H2 数据库，可通过配置切换 MySQL、PostgreSQL、GaussDB（PostgreSQL 兼容模式）和 OceanBase（MySQL 兼容模式）；复杂业务字段以 JSON 文本存储。
 - 打包：Maven 多模块，前端构建产物输出到后端静态资源目录，最终以单 JAR 交付。
 
 ## 目录约定
 
-- `backend/`：Spring Boot 后端模块。
-  - `src/main/java/io/litealert/auth`：认证、用户、JWT、安全过滤器。
-  - `src/main/java/io/litealert/namespace`：命名空间管理。
-  - `src/main/java/io/litealert/topic`：Topic、报文格式、转换规则。
-  - `src/main/java/io/litealert/apikey`：ApiKey 生命周期、鉴权相关元数据。
-  - `src/main/java/io/litealert/notify`：通知目标、通知渠道、订阅与派发。
-  - `src/main/java/io/litealert/webhook`：Webhook 接入、鉴权、限流、白名单。
-  - `src/main/java/io/litealert/admin`：管理端系统设置、统计、审计入口。
-  - `src/main/java/io/litealert/common`：通用配置、错误、加密、存储、工具类。
+- `backend/`：Spring Boot 后端模块，按业务域分包，每域进一步拆分为 `domain`（实体、枚举、DTO）和 `web`（Controller、DTO 转换器）。
+  - `src/main/java/io/litealert/auth`：认证、用户、JWT、安全过滤器。子包：`domain`（User/Role 实体）、`permission`（权限模型与服务）、`role`（角色 CRUD）、`web`（登录/用户/角色 Controller）。
+  - `src/main/java/io/litealert/namespace`：命名空间管理。子包：`domain`、`web`。
+  - `src/main/java/io/litealert/topic`：Topic、报文格式、转换规则。子包：`domain`、`web`。
+  - `src/main/java/io/litealert/apikey`：ApiKey 生命周期、鉴权相关元数据。子包：`domain`、`web`。
+  - `src/main/java/io/litealert/notify`：通知目标、通知渠道、订阅与派发。子包：`channel`（渠道策略）、`delivery`（投递 Worker 与记录）、`domain`（NotifyTarget/Subscription 实体）、`mail`（SMTP 服务）、`template`（模板渲染）、`web`（Controller）。
+  - `src/main/java/io/litealert/webhook`：Webhook 接入、鉴权、限流、白名单。子包：`web`。
+  - `src/main/java/io/litealert/admin`：管理端系统设置、统计、审计入口。子包：`settings`、`stats`、`web`。
+  - `src/main/java/io/litealert/transform`：报文转换引擎（JSONPath 映射、模板转换）。
+  - `src/main/java/io/litealert/common`：通用配置、错误、加密、存储、工具。子包：`audit`、`config`、`crypto`、`db`、`error`、`storage`、`template`、`util`、`web`。
 - `frontend/`：Vue 3 前端。
   - `src/views`：页面级组件。
   - `src/components`：可复用组件。

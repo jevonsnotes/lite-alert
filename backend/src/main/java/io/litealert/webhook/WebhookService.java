@@ -8,6 +8,7 @@ import io.litealert.common.config.LiteAlertProperties;
 import io.litealert.common.error.BusinessException;
 import io.litealert.common.error.ErrorCode;
 import io.litealert.common.web.TraceIdHolder;
+import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.notify.delivery.NotifyDeliveryService;
 import io.litealert.namespace.domain.Namespace;
 import io.litealert.namespace.domain.NamespaceStore;
@@ -24,7 +25,7 @@ import java.util.Map;
 /**
  * Webhook ingest pipeline:
  *   topic lookup → IP allowlist → ApiKey auth → rate limit
- *   → body size → schema validation → transform → notify dispatch.
+ *   → body size → schema validation → notify dispatch.
  *
  * <p>Every exit path — accepted or rejected — produces exactly one audit
  * event so the call-records UI can render the full picture.
@@ -44,11 +45,10 @@ public class WebhookService {
     private final NotifyDeliveryService deliveryService;
     private final AuditLogger audit;
     private final LiteAlertProperties props;
+    private final SystemSettingsService settingsService;
 
     public Map<String, Object> handle(String namespace, String topicName,
                                       String authorization, String queryKey, JsonNode body, String remoteIp) {
-        // Best-effort context: every audit line carries these so the UI can
-        // filter "show me all attempts on topic X" regardless of outcome.
         Map<String, Object> ctxAttrs = new LinkedHashMap<>();
         ctxAttrs.put("namespace", namespace);
         ctxAttrs.put("topicName", topicName);
@@ -108,25 +108,25 @@ public class WebhookService {
             // 5) schema validation
             schemaService.validate(topic.getInboundFormat(), body);
 
-            // 6) audit accept + persist delivery tasks.
-            // Note: payload transform is no longer applied globally here; it's
-            // a WEBHOOK-channel concern, run per-target inside the worker.
+            String traceId = TraceIdHolder.current();
+
+            // 6) sync vs async dispatch
+            if (topic.isSync()) {
+                return deliverSync(topic, traceId, body, ctxAttrs);
+            }
+
+            // async: persist deliveries, return immediately
+            int deliveryCount = deliveryService.createDeliveries(topic, traceId, body);
             audit.log("webhook.accepted", ctxAttrs);
-
-            int deliveryCount = deliveryService.createDeliveries(topic,
-                    TraceIdHolder.current(), body);
-
-            return deliveryService.acceptedResponse(TraceIdHolder.current(), deliveryCount);
+            return deliveryService.response(0, "accepted", traceId, deliveryCount, 0, 0, false);
 
         } catch (BusinessException e) {
-            // expected rejection — log structured + rethrow for the standard error envelope
             ctxAttrs.put("code", e.getCode().name());
             ctxAttrs.put("status", e.getCode().getStatus());
             ctxAttrs.put("message", e.getMessage());
             audit.log("webhook.rejected", ctxAttrs);
             throw e;
         } catch (RuntimeException e) {
-            // unexpected — still record so the user sees the failure on the UI
             log.error("webhook handling crashed", e);
             ctxAttrs.put("code", "INTERNAL_ERROR");
             ctxAttrs.put("status", 500);
@@ -134,5 +134,29 @@ public class WebhookService {
             audit.log("webhook.rejected", ctxAttrs);
             throw e;
         }
+    }
+
+    private Map<String, Object> deliverSync(Topic topic, String traceId, JsonNode body, Map<String, Object> ctxAttrs) {
+        // Resolve effective timeout
+        Integer timeout = topic.getSyncTimeout();
+        if (timeout == null) {
+            timeout = settingsService.current().getSyncTimeoutSeconds();
+        }
+        int effectiveTimeout = timeout == null ? 30 : timeout;
+
+        NotifyDeliveryService.SyncResult sr = deliveryService.syncDeliver(topic, traceId, body, effectiveTimeout);
+        ctxAttrs.put("topicId", topic.getId());
+        audit.log("webhook.accepted", ctxAttrs);
+
+        if (sr.timedOut()) {
+            return deliveryService.response(2, "sync delivery timed out", traceId, sr.total(), sr.sent(), sr.failed(), true);
+        }
+        if (sr.sent() == 0 && sr.failed() > 0) {
+            return deliveryService.response(3, "all deliveries failed", traceId, sr.total(), 0, sr.failed(), false);
+        }
+        if (sr.failed() > 0) {
+            return deliveryService.response(1, sr.failed() + "/" + sr.total() + " failed", traceId, sr.total(), sr.sent(), sr.failed(), false);
+        }
+        return deliveryService.response(0, "all deliveries sent successfully", traceId, sr.total(), sr.sent(), 0, false);
     }
 }

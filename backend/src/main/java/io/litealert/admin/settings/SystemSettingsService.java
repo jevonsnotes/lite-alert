@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -65,15 +66,17 @@ public class SystemSettingsService {
                     ID, json.write(incoming), Timestamp.from(Instant.now()));
         }
         ref.set(incoming);
+        var rlAudit = new LinkedHashMap<String, Object>();
+        rlAudit.put("perTopicPerMinute", incoming.getRateLimit().getPerTopicPerMinute());
+        rlAudit.put("perApiKeyPerMinute", incoming.getRateLimit().getPerApiKeyPerMinute());
+        rlAudit.put("perIpPerMinute", incoming.getRateLimit().getPerIpPerMinute());
+        rlAudit.put("syncTimeoutSeconds", incoming.getSyncTimeoutSeconds());
         audit.log("system.settings.update", Map.of(
                 "actor", actor,
                 "auditRetention", spanToMap(incoming.getAuditRetention()),
                 "deliveryRetention", spanToMap(incoming.getDeliveryRetention()),
                 "dashboardDefaultTrend", spanToMap(incoming.getDashboardDefaultTrend()),
-                "rateLimit", Map.of(
-                        "perTopicPerMinute", incoming.getRateLimit().getPerTopicPerMinute(),
-                        "perApiKeyPerMinute", incoming.getRateLimit().getPerApiKeyPerMinute(),
-                        "perIpPerMinute", incoming.getRateLimit().getPerIpPerMinute())));
+                "rateLimit", rlAudit));
         return incoming;
     }
 
@@ -83,6 +86,7 @@ public class SystemSettingsService {
         if (s.getDashboardDefaultTrend() == null) s.setDashboardDefaultTrend(new SystemSettings.Span(14, SystemSettings.Unit.DAYS));
         if (s.getRateLimit() == null) s.setRateLimit(SystemSettings.RateLimitConfig.builder().build());
         if (s.getPayloadMaskingSensitiveWords() == null) s.setPayloadMaskingSensitiveWords(SystemSettings.defaultSensitiveWords());
+        if (s.getSyncTimeoutSeconds() == null || s.getSyncTimeoutSeconds() < 0) s.setSyncTimeoutSeconds(30);
         SystemSettings.RateLimitConfig rl = s.getRateLimit();
         if (rl.getPerTopicPerMinute() < 1) rl.setPerTopicPerMinute(60);
         if (rl.getPerApiKeyPerMinute() < 1) rl.setPerApiKeyPerMinute(200);

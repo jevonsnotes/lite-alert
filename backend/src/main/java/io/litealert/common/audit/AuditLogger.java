@@ -36,6 +36,8 @@ public class AuditLogger {
             Map<String, Object> clean = new LinkedHashMap<>();
             String actor = null;
             String traceId = TraceIdHolder.current();
+            String topicId = null;
+            String apiKeyId = null;
             if (attrs != null) {
                 for (var e : attrs.entrySet()) {
                     String k = e.getKey();
@@ -45,14 +47,18 @@ public class AuditLogger {
                         continue;
                     }
                     if ("actor".equals(k) && e.getValue() != null) actor = String.valueOf(e.getValue());
+                    if ("topicId".equals(k) && e.getValue() instanceof String s) topicId = s;
+                    if ("apiKeyId".equals(k) && e.getValue() instanceof String s) apiKeyId = s;
                     clean.put(k, e.getValue());
                 }
             }
-            jdbc.update("insert into la_audit_log(ts, type, actor, trace_id, attrs_json) values (?, ?, ?, ?, ?)",
+            jdbc.update("insert into la_audit_log(ts, type, actor, trace_id, topic_id, api_key_id, attrs_json) values (?, ?, ?, ?, ?, ?, ?)",
                     Timestamp.from(Instant.now()),
                     type,
                     actor,
                     traceId,
+                    topicId,
+                    apiKeyId,
                     json.write(clean));
         } catch (Exception e) {
             log.warn("audit write failed: type={}", type, e);

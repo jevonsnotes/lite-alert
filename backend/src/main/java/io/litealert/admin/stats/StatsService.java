@@ -1,25 +1,19 @@
 package io.litealert.admin.stats;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 public class StatsService {
 
     private final JdbcTemplate jdbc;
-    private final ObjectMapper objectMapper;
 
-    public StatsService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public StatsService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -35,19 +29,20 @@ public class StatsService {
         String inClause = String.join(",", topicIds.stream().map(id -> "?").toList());
         Object[] args = topicIds.toArray();
 
-        // Audit counts: topic_id is in attrs_json, not a direct column.
-        // We query relevant audit rows and filter in Java.
-        jdbc.query("select type, attrs_json from la_audit_log where type in ('webhook.accepted','notify.sent','notify.failed','notify.give_up')",
-                rs -> {
+        // Audit counts: now uses indexed topic_id column + GROUP BY
+        jdbc.query("select topic_id, type, count(*) as cnt from la_audit_log " +
+                        "where topic_id in (" + inClause + ") " +
+                        "and type in ('webhook.accepted','notify.sent','notify.failed','notify.give_up') " +
+                        "group by topic_id, type",
+                args, (rs, rowNum) -> {
+                    String tid = rs.getString("topic_id");
                     String type = rs.getString("type");
-                    String attrsJson = rs.getString("attrs_json");
-                    String tid = extractTopicId(attrsJson);
-                    if (tid != null && stats.containsKey(tid)) {
-                        TopicSummary s = stats.get(tid);
-                        if ("webhook.accepted".equals(type)) s.setAccepted(s.getAccepted() + 1);
-                        else if ("notify.sent".equals(type)) s.setSent(s.getSent() + 1);
-                        else if ("notify.failed".equals(type) || "notify.give_up".equals(type)) s.setFailed(s.getFailed() + 1);
-                    }
+                    long cnt = rs.getLong("cnt");
+                    TopicSummary s = stats.computeIfAbsent(tid, TopicSummary::new);
+                    if ("webhook.accepted".equals(type)) s.setAccepted(s.getAccepted() + cnt);
+                    else if ("notify.sent".equals(type)) s.setSent(s.getSent() + cnt);
+                    else if ("notify.failed".equals(type) || "notify.give_up".equals(type)) s.setFailed(s.getFailed() + cnt);
+                    return 0;
                 });
 
         // Delivery counts: topic_id is a direct column
@@ -63,17 +58,6 @@ public class StatsService {
                 });
 
         return stats;
-    }
-
-    private String extractTopicId(String json) {
-        if (json == null || json.isBlank()) return null;
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            JsonNode tid = node.get("topicId");
-            return tid == null ? null : tid.asText();
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     public static class TopicSummary {

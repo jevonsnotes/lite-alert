@@ -1,6 +1,5 @@
 package io.litealert.common.db;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.litealert.auth.permission.Permissions;
 import org.junit.jupiter.api.Test;
@@ -11,7 +10,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -85,11 +86,11 @@ class DatabaseInitializerTest {
         assertThat(assignmentCount).isEqualTo(1);
     }
 
-    private Set<String> permissionsOf(String roleId) throws Exception {
-        String json = jdbcTemplate.queryForObject(
-                "select permissions_json from la_role where id = ?",
+    private Set<String> permissionsOf(String roleId) {
+        List<String> perms = jdbcTemplate.queryForList(
+                "select permission from la_role_permission where role_id = ?",
                 String.class,
                 roleId);
-        return objectMapper.readValue(json, new TypeReference<LinkedHashSet<String>>() {});
+        return perms.stream().collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

@@ -34,6 +34,8 @@ create table if not exists la_topic (
   description varchar(500) null,
   owner_id varchar(64) not null,
   status varchar(16) not null,
+  sync boolean not null default false,
+  sync_timeout int null,
   auth_json text null,
   inbound_format_json text null,
   created_at timestamp null,
@@ -114,8 +116,13 @@ create table if not exists la_audit_log (
   type varchar(128) not null,
   actor varchar(64) null,
   trace_id varchar(128) null,
+  topic_id varchar(64) null,
+  api_key_id varchar(64) null,
   attrs_json text null
 );
+
+create index if not exists idx_al_topic_id on la_audit_log(topic_id);
+create index if not exists idx_al_api_key_id on la_audit_log(api_key_id);
 
 create table if not exists la_notify_delivery (
   id varchar(64) primary key,
@@ -148,9 +155,14 @@ create table if not exists la_role (
   name varchar(64) not null unique,
   description varchar(500) null,
   system_builtin boolean not null default false,
-  permissions_json text not null default '[]',
   created_at timestamp null,
   updated_at timestamp null
+);
+
+create table if not exists la_role_permission (
+  role_id varchar(64) not null,
+  permission varchar(64) not null,
+  primary key (role_id, permission)
 );
 
 create table if not exists la_user_role (
@@ -165,17 +177,35 @@ select 'u_admin', 'admin', '$2a$10$npZpvBMX1imudiwgxcK69epwpT8yhikyVIX4Y/unzzjzt
 where not exists (select 1 from la_user where id = 'u_admin');
 
 -- Seed built-in roles
-insert into la_role(id, name, description, system_builtin, permissions_json, created_at)
-select 'r_super_admin', '超级管理员', 'All permissions', true,
-  '["DASHBOARD_VIEW","STATS_VIEW","STATS_VIEW_ALL","NAMESPACE_VIEW","NAMESPACE_VIEW_ALL","NAMESPACE_CREATE","NAMESPACE_UPDATE","NAMESPACE_DISABLE","NAMESPACE_DELETE","TOPIC_VIEW","TOPIC_VIEW_ALL","TOPIC_CREATE","TOPIC_UPDATE","TOPIC_PUBLISH","TOPIC_DISABLE","TOPIC_DELETE","APIKEY_VIEW","APIKEY_VIEW_ALL","APIKEY_CREATE","APIKEY_UPDATE","APIKEY_ROTATE","APIKEY_DELETE","CONTACT_VIEW","CONTACT_VIEW_ALL","CONTACT_CREATE","CONTACT_UPDATE","CONTACT_DELETE","AUDIT_VIEW","AUDIT_VIEW_ALL","DELIVERY_VIEW","DELIVERY_PAYLOAD_READ","USER_VIEW","USER_CREATE","USER_UPDATE","USER_DELETE","ROLE_VIEW","ROLE_CREATE","ROLE_UPDATE","ROLE_DELETE","SYSTEM_HEALTH_VIEW","SYSTEM_SETTINGS_VIEW","SYSTEM_SETTINGS_UPDATE","MAIL_CONFIG_VIEW","MAIL_CONFIG_UPDATE","SMTP_TEST"]',
-  now()
+insert into la_role(id, name, description, system_builtin, created_at)
+select 'r_super_admin', '超级管理员', 'All permissions', true, now()
 where not exists (select 1 from la_role where id = 'r_super_admin');
 
-insert into la_role(id, name, description, system_builtin, permissions_json, created_at)
-select 'r_normal_user', '普通用户', 'Basic user permissions', true,
-  '["DASHBOARD_VIEW","STATS_VIEW","NAMESPACE_VIEW","NAMESPACE_CREATE","NAMESPACE_UPDATE","NAMESPACE_DISABLE","NAMESPACE_DELETE","TOPIC_VIEW","TOPIC_CREATE","TOPIC_UPDATE","TOPIC_PUBLISH","TOPIC_DISABLE","TOPIC_DELETE","APIKEY_VIEW","APIKEY_CREATE","APIKEY_UPDATE","APIKEY_ROTATE","APIKEY_DELETE","CONTACT_VIEW","CONTACT_CREATE","CONTACT_UPDATE","CONTACT_DELETE","AUDIT_VIEW","DELIVERY_VIEW","DELIVERY_PAYLOAD_READ"]',
-  now()
+insert into la_role_permission(role_id, permission)
+select 'r_super_admin', p from unnest(array[
+  'DASHBOARD_VIEW','STATS_VIEW','STATS_VIEW_ALL','NAMESPACE_VIEW','NAMESPACE_VIEW_ALL','NAMESPACE_CREATE','NAMESPACE_UPDATE','NAMESPACE_DISABLE','NAMESPACE_DELETE',
+  'TOPIC_VIEW','TOPIC_VIEW_ALL','TOPIC_CREATE','TOPIC_UPDATE','TOPIC_PUBLISH','TOPIC_DISABLE','TOPIC_DELETE',
+  'APIKEY_VIEW','APIKEY_VIEW_ALL','APIKEY_CREATE','APIKEY_UPDATE','APIKEY_ROTATE','APIKEY_DELETE',
+  'CONTACT_VIEW','CONTACT_VIEW_ALL','CONTACT_CREATE','CONTACT_UPDATE','CONTACT_DELETE',
+  'AUDIT_VIEW','AUDIT_VIEW_ALL','DELIVERY_VIEW','DELIVERY_PAYLOAD_READ',
+  'USER_VIEW','USER_CREATE','USER_UPDATE','USER_DELETE',
+  'ROLE_VIEW','ROLE_CREATE','ROLE_UPDATE','ROLE_DELETE',
+  'SYSTEM_HEALTH_VIEW','SYSTEM_SETTINGS_VIEW','SYSTEM_SETTINGS_UPDATE',
+  'MAIL_CONFIG_VIEW','MAIL_CONFIG_UPDATE','SMTP_TEST']) p
+where not exists (select 1 from la_role_permission where role_id = 'r_super_admin');
+
+insert into la_role(id, name, description, system_builtin, created_at)
+select 'r_normal_user', '普通用户', 'Basic user permissions', true, now()
 where not exists (select 1 from la_role where id = 'r_normal_user');
+
+insert into la_role_permission(role_id, permission)
+select 'r_normal_user', p from unnest(array[
+  'DASHBOARD_VIEW','STATS_VIEW','NAMESPACE_VIEW','NAMESPACE_CREATE','NAMESPACE_UPDATE','NAMESPACE_DISABLE','NAMESPACE_DELETE',
+  'TOPIC_VIEW','TOPIC_CREATE','TOPIC_UPDATE','TOPIC_PUBLISH','TOPIC_DISABLE','TOPIC_DELETE',
+  'APIKEY_VIEW','APIKEY_CREATE','APIKEY_UPDATE','APIKEY_ROTATE','APIKEY_DELETE',
+  'CONTACT_VIEW','CONTACT_CREATE','CONTACT_UPDATE','CONTACT_DELETE',
+  'AUDIT_VIEW','DELIVERY_VIEW','DELIVERY_PAYLOAD_READ']) p
+where not exists (select 1 from la_role_permission where role_id = 'r_normal_user');
 
 -- Seed admin role assignment
 insert into la_user_role(user_id, role_id)

@@ -1,6 +1,8 @@
 package io.litealert.webhook;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.litealert.admin.settings.SystemSettings;
+import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.apikey.domain.ApiKeyStore;
 import io.litealert.common.audit.AuditLogger;
 import io.litealert.common.config.LiteAlertProperties;
@@ -42,6 +44,9 @@ class WebhookServiceTest {
         when(topicStore.findForWebhook("orders", "paid")).thenReturn(Optional.of(topic));
         when(namespaceStore.findById("ns_1")).thenReturn(Optional.of(ns));
 
+        SystemSettingsService settingsService = mock(SystemSettingsService.class);
+        when(settingsService.current()).thenReturn(new SystemSettings());
+
         WebhookService service = new WebhookService(
                 topicStore,
                 namespaceStore,
@@ -52,7 +57,8 @@ class WebhookServiceTest {
                 mock(JsonSchemaService.class),
                 mock(NotifyDeliveryService.class),
                 mock(AuditLogger.class),
-                new LiteAlertProperties());
+                new LiteAlertProperties(),
+                settingsService);
 
         assertThatThrownBy(() -> service.handle("orders", "paid", null, null,
                 new ObjectMapper().createObjectNode(), "127.0.0.1"))

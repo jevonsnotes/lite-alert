@@ -36,6 +36,7 @@ type Settings = {
     perIpPerMinute: number
   }
   payloadMaskingSensitiveWords: string[]
+  syncTimeoutSeconds: number
 }
 
 const UNITS = [
@@ -51,7 +52,8 @@ const settings = reactive<Settings>({
   deliveryRetention: { value: 90, unit: 'DAYS' },
   dashboardDefaultTrend: { value: 14, unit: 'DAYS' },
   rateLimit: { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 },
-  payloadMaskingSensitiveWords: []
+  payloadMaskingSensitiveWords: [],
+  syncTimeoutSeconds: 30
 })
 const settingsSaving = ref(false)
 const newSensitiveWord = ref('')
@@ -91,6 +93,7 @@ async function loadAll() {
     settings.dashboardDefaultTrend = s.dashboardDefaultTrend
     settings.rateLimit = s.rateLimit ?? { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 }
     settings.payloadMaskingSensitiveWords = s.payloadMaskingSensitiveWords ?? []
+    settings.syncTimeoutSeconds = s.syncTimeoutSeconds ?? 30
   } finally {
     loading.value = false
   }
@@ -150,13 +153,15 @@ async function saveSettings() {
       deliveryRetention: { ...settings.deliveryRetention },
       dashboardDefaultTrend: { ...settings.dashboardDefaultTrend },
       rateLimit: { ...settings.rateLimit },
-      payloadMaskingSensitiveWords: [...settings.payloadMaskingSensitiveWords]
+      payloadMaskingSensitiveWords: [...settings.payloadMaskingSensitiveWords],
+      syncTimeoutSeconds: settings.syncTimeoutSeconds
     })
     settings.auditRetention = saved.auditRetention
     settings.deliveryRetention = saved.deliveryRetention
     settings.dashboardDefaultTrend = saved.dashboardDefaultTrend
     settings.rateLimit = saved.rateLimit
     settings.payloadMaskingSensitiveWords = saved.payloadMaskingSensitiveWords ?? []
+    settings.syncTimeoutSeconds = saved.syncTimeoutSeconds ?? 30
     ElMessage.success('已保存')
   } finally {
     settingsSaving.value = false
@@ -249,6 +254,10 @@ function addSensitiveWord() {
             <el-option v-for="u in UNITS" :key="u.value" :label="u.label" :value="u.value" />
           </el-select>
           <div class="muted">仪表盘趋势图首次打开时使用此窗口，用户可在页面临时调整。</div>
+        </el-form-item>
+        <el-form-item label="同步投递超时">
+          <el-input-number v-model="settings.syncTimeoutSeconds" :min="0" :max="300" size="small" />
+          <span class="muted" style="margin-left: 8px">秒（0 = 不限制，Topic 维度可覆盖此值）</span>
         </el-form-item>
         <el-form-item label="Payload 脱敏敏感词">
           <div class="tag-input-wrap">

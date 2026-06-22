@@ -58,6 +58,8 @@ type Topic = {
   auth: { mode: 'API_KEY' | 'NONE'; keyLocation?: 'HEADER' | 'QUERY'; ipWhitelist: string[]; rateLimit?: any }
   inboundFormat?: any
   templates?: Partial<Record<ChannelType, ChannelTemplate>>
+  sync?: boolean
+  syncTimeout?: number | null
   createdAt?: string
   publishedAt?: string
 }
@@ -79,6 +81,7 @@ const tabName = ref('basic')
 const draftCreate = reactive({
   name: '',
   description: '',
+  sync: false,
   authMode: 'API_KEY' as 'API_KEY' | 'NONE',
   keyLocation: 'HEADER' as 'HEADER' | 'QUERY',
   ipWhitelist: '' as string,
@@ -501,6 +504,8 @@ async function createTopic() {
   const created = await post<Topic>(`/topics?namespaceId=${namespaceId}`, {
     name: draftCreate.name,
     description: draftCreate.description,
+    sync: draftCreate.sync,
+    syncTimeout: null,
     authMode: 'API_KEY',
     keyLocation: draftCreate.keyLocation,
     ipWhitelist: ips,
@@ -522,7 +527,9 @@ async function saveBasic() {
   }
   const updated = await patch<Topic>(`/topics/${topic.value.id}`, {
     name: topic.value.name,
-    description: topic.value.description
+    description: topic.value.description,
+    sync: topic.value.sync ?? false,
+    syncTimeout: topic.value.syncTimeout ?? null
   })
   topic.value = updated
   originalTopicName.value = updated.name
@@ -644,6 +651,13 @@ const SUBSCRIBED_CHANNELS = computed(() => {
         <el-form-item label="描述">
           <el-input v-model="draftCreate.description" />
         </el-form-item>
+        <el-form-item label="投递模式">
+          <el-radio-group v-model="draftCreate.sync">
+            <el-radio-button :label="false">异步（默认）</el-radio-button>
+            <el-radio-button :label="true">同步</el-radio-button>
+          </el-radio-group>
+          <div class="muted">同步模式下，调用方会等待通知投递完成后再返回结果。</div>
+        </el-form-item>
         <el-form-item label="ApiKey 位置">
           <el-radio-group v-model="draftCreate.keyLocation">
             <el-radio-button label="HEADER">请求头 Authorization</el-radio-button>
@@ -693,6 +707,17 @@ const SUBSCRIBED_CHANNELS = computed(() => {
           </el-form-item>
           <el-form-item label="描述">
             <el-input v-model="topic.description" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-form-item label="投递模式">
+            <el-radio-group v-model="topic.sync">
+              <el-radio-button :value="false">异步</el-radio-button>
+              <el-radio-button :value="true">同步</el-radio-button>
+            </el-radio-group>
+            <div class="muted">同步模式下，调用方会等待投递完成再返回。</div>
+          </el-form-item>
+          <el-form-item label="同步超时">
+            <el-input-number v-model="topic.syncTimeout" :min="0" :max="300" size="small" placeholder="留空使用全局配置" />
+            <span class="muted" style="margin-left: 8px">秒（0 = 不限制，留空 = 使用系统设置）</span>
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="saveBasic">保存基础信息</el-button>

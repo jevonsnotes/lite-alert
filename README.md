@@ -24,7 +24,7 @@ Lite-Alert 是一个前后端一体的轻量级消息通知服务。它默认使
 
 ## 技术栈
 
-- **后端**：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、JDBC、MyBatis-Flex、Flyway、Jasypt、Caffeine、Jackson。
+- **后端**：Java 17、Spring Boot 3.5、Spring Security、Spring Validation、Spring Mail、Spring Boot Actuator、JDBC、MyBatis-Flex、Flyway、Jasypt、Caffeine、Jackson、Lombok。
 - **数据库**：H2（默认）、MySQL、PostgreSQL；GaussDB 使用 PostgreSQL 协议，OceanBase 使用 MySQL 协议。
 - **前端**：Vue 3、TypeScript、Vite、Element Plus、Pinia、Vue Router、Axios、ECharts。
 - **打包**：Maven 多模块，`frontend-maven-plugin` 固定 Node/npm 版本并构建前端资源。
@@ -156,14 +156,53 @@ lite-alert/
 ├── backend/                 # Spring Boot 后端
 │   └── src/main/java/io/litealert/
 │       ├── auth/            # 登录、用户、JWT、角色与权限
+│       │   ├── domain/      # User/Role 实体与 DTO
+│       │   ├── permission/  # 权限模型与服务
+│       │   ├── role/        # 角色 CRUD
+│       │   └── web/         # 登录/用户/角色 Controller
 │       ├── namespace/       # 命名空间
+│       │   ├── domain/      # Namespace 实体与 DTO
+│       │   └── web/         # Namespace Controller
 │       ├── topic/           # Topic、报文格式、通道模板
+│       │   ├── domain/      # Topic 实体与 DTO
+│       │   └── web/         # Topic Controller
 │       ├── apikey/          # ApiKey 生命周期与鉴权元数据
+│       │   ├── domain/      # ApiKey/Scope 实体与 DTO
+│       │   └── web/         # ApiKey Controller
 │       ├── notify/          # 通知目标、通知渠道、订阅、投递
+│       │   ├── channel/     # 通知渠道策略实现
+│       │   ├── delivery/    # 投递 Worker 与记录
+│       │   ├── domain/      # NotifyTarget/Subscription 实体
+│       │   ├── mail/        # SMTP 服务
+│       │   ├── template/    # 模板渲染
+│       │   └── web/         # 通知管理 Controller
 │       ├── webhook/         # Webhook 接入、鉴权、限流、白名单
+│       │   └── web/         # Webhook Controller
 │       ├── admin/           # 系统设置、统计、审计
+│       │   ├── settings/    # 系统设置
+│       │   ├── stats/       # 统计服务
+│       │   └── web/         # 管理端 Controller
+│       ├── transform/       # 报文转换引擎（JSONPath 映射、模板转换）
 │       └── common/          # 通用配置、错误、加密、数据库、工具
+│           ├── audit/       # 审计日志
+│           ├── config/      # Spring 配置类
+│           ├── crypto/      # 加密与脱敏
+│           ├── db/          # 数据库初始化
+│           ├── error/       # 全局异常处理
+│           ├── storage/     # 文件存储
+│           ├── template/    # Mustache 模板服务
+│           ├── util/        # 工具类
+│           └── web/         # 通用 Web 组件
 ├── frontend/                # Vue 3 前端
+│   └── src/
+│       ├── views/           # 页面级组件
+│       ├── components/      # 可复用组件
+│       ├── layouts/         # 布局组件
+│       ├── http/            # Axios 封装
+│       ├── stores/          # Pinia 状态
+│       ├── router/          # 路由配置
+│       ├── styles/          # 全局样式
+│       └── utils/           # 工具函数
 ├── docker/                  # Dockerfile、docker-compose、环境变量示例
 └── docs/design/             # 系统设计文档
 ```

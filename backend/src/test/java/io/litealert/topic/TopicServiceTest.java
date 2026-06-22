@@ -78,7 +78,7 @@ class TopicServiceTest {
         when(store.findByNamespaceAndName("ns_1", "paid_new")).thenReturn(Optional.empty());
 
         Topic updated = service.update("t_1", new TopicService.UpdateRequest(
-                "paid_new", "new desc", null, null, null));
+                "paid_new", "new desc", null, null, null, null, null));
 
         assertThat(updated.getName()).isEqualTo("paid_new");
         assertThat(updated.getDescription()).isEqualTo("new desc");
@@ -97,7 +97,7 @@ class TopicServiceTest {
         when(store.findById("t_1")).thenReturn(Optional.of(topic));
 
         assertThatThrownBy(() -> service.update("t_1", new TopicService.UpdateRequest(
-                "paid_new", null, null, null, null)))
+                "paid_new", null, null, null, null, null, null)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.CONFLICT);
@@ -115,7 +115,7 @@ class TopicServiceTest {
         when(store.findById("t_1")).thenReturn(Optional.of(topic));
 
         assertThatThrownBy(() -> service.update("t_1", new TopicService.UpdateRequest(
-                "paid_new", null, null, null, null)))
+                "paid_new", null, null, null, null, null, null)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.CONFLICT);

@@ -20,6 +20,7 @@ public class SystemSettings {
     private Span dashboardDefaultTrend = new Span(14, Unit.DAYS);
     private RateLimitConfig rateLimit = new RateLimitConfig();
     private List<String> payloadMaskingSensitiveWords = defaultSensitiveWords();
+    private Integer syncTimeoutSeconds = 30;
 
     public static List<String> defaultSensitiveWords() {
         return List.of("password", "passwd", "pwd", "token", "secret", "authorization",
