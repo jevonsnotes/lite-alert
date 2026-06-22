@@ -1,35 +1,29 @@
 package io.litealert.notify.domain;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.mybatisflex.annotation.Column;
-import com.mybatisflex.annotation.Id;
-import com.mybatisflex.annotation.KeyType;
-import com.mybatisflex.annotation.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * DTO returned to callers of the subscription API.  The backing storage is
+ * now the relational {@code la_topic_contact} table, managed by
+ * {@link TopicContactStore}.  MyBatis-Flex annotations have been removed
+ * because this class is no longer a direct entity.
+ */
 @Data
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@Table("la_subscription")
 public class Subscription {
 
-    @Id(keyType = KeyType.None)
-    @Column("topic_id")
     private String topicId;
 
-    @Column(value = "contact_ids_json", typeHandler = io.litealert.common.db.JsonListTypeHandler.class)
     @Builder.Default
     private List<String> contactIds = new ArrayList<>();
-
-    @Column(value = "updated_at")
-    private Instant updatedAt;
 }

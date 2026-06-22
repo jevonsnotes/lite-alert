@@ -110,7 +110,7 @@ class StatsControllerTest {
 
     @Test
     void rankingCanReturnSelectedApiKeyOutsideTopListWithZeroCounters() {
-        jdbc.update("insert into la_api_key(id, owner_id, name, prefix, key_hash, scopes_json, status, created_at, usage_count, rotate_count) values ('ak_1', 'u_admin', 'orders-key', 'LAK00001', 'hash', '[]', 'ACTIVE', current_timestamp, 0, 0)");
+        jdbc.update("insert into la_api_key(id, owner_id, name, prefix, key_hash, status, created_at, usage_count, rotate_count) values ('ak_1', 'u_admin', 'orders-key', 'LAK00001', 'hash', 'ACTIVE', current_timestamp, 0, 0)");
         for (int i = 0; i < 12; i++) log("webhook.accepted", "t_top", "ak_top_" + i);
 
         Map<String, Object> apiKeys = controller.ranking(1, "DAYS", "APIKEY", 10, null, "ak_1");

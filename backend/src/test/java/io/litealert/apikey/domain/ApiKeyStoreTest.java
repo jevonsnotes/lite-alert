@@ -32,6 +32,7 @@ class ApiKeyStoreTest {
                 .prefix("la_old1")
                 .keyHash("hash")
                 .status(ApiKey.Status.ACTIVE)
+                .scopes(java.util.List.of(new ApiKey.Scope(ApiKey.ScopeType.NAMESPACE, "ns_1")))
                 .build();
 
         store.save(key);
@@ -43,6 +44,10 @@ class ApiKeyStoreTest {
         assertThat(store.findByOwner("u_1"))
                 .extracting(ApiKey::getId)
                 .containsExactly("ak_1");
-        assertThat(store.findById("ak_1").orElseThrow().getUsageCount()).isEqualTo(12);
+        ApiKey loaded = store.findById("ak_1").orElseThrow();
+        assertThat(loaded.getUsageCount()).isEqualTo(12);
+        assertThat(loaded.getScopes())
+                .extracting(ApiKey.Scope::getId)
+                .containsExactly("ns_1");
     }
 }

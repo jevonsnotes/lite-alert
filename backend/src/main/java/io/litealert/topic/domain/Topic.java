@@ -32,13 +32,12 @@ import java.util.Map;
  *       {@code outputTemplate} + {@code transform} mappings</li>
  * </ul>
  *
- * <p>Legacy fields {@code transform} / {@code notifyTemplate} are still
- * deserialized so older topic files keep working; they're folded into the
- * EMAIL channel template at load time and are not written back.
- *
- * <p>JSON columns use {@link JacksonTypeHandler} for automatic serialization,
- * except {@code templates} which uses {@link JsonChannelTemplatesTypeHandler}
- * to correctly handle the generic Map type.
+ * <p>Channel templates are persisted in the relational
+ * {@code la_topic_channel_template} table.  The {@link #templates} field is
+ * marked {@code @Column(ignore = true)} so MyBatis-Flex does not map it, but
+ * Jackson still serializes it for API responses.  Use
+ * {@link #assembleTemplates(List)} / {@link #disassembleTemplates()} to
+ * convert between the in-memory Map and DB rows.
  */
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -83,21 +82,15 @@ public class Topic {
     @Column(value = "inbound_format_json", typeHandler = JacksonTypeHandler.class)
     private JsonNode inboundFormat;
 
-    /** Per-channel notify configuration. */
+    /**
+     * Per-channel notify configuration.  Stored in {@code la_topic_channel_template}
+     * (one row per channel) and assembled into this Map at load time.  Marked
+     * {@code ignore = true} so MyBatis-Flex does not attempt column mapping;
+     * Jackson still serializes it for API responses.
+     */
     @Builder.Default
-    @Column(value = "templates_json", typeHandler = JsonChannelTemplatesTypeHandler.class)
+    @Column(ignore = true)
     private Map<NotifyTarget.Type, ChannelTemplate> templates = new EnumMap<>(NotifyTarget.Type.class);
-
-    // ---------- Legacy compatibility ----------
-    /** @deprecated use {@link #getTemplates()} (WEBHOOK entry's {@code transform}). */
-    @Deprecated
-    @Column(value = "transform_json", typeHandler = JacksonTypeHandler.class)
-    private Transform transform;
-
-    /** @deprecated use {@link #getTemplates()} (EMAIL entry). */
-    @Deprecated
-    @Column(value = "notify_template_json", typeHandler = JacksonTypeHandler.class)
-    private NotifyTemplate notifyTemplate;
 
     @Column(value = "created_at")
     private Instant createdAt;
@@ -109,21 +102,62 @@ public class Topic {
     private Instant publishedAt;
 
     /**
-     * Returns the channel template for a given target type, falling back to
-     * any-channel defaults — including legacy {@code notifyTemplate} fields
-     * promoted to EMAIL when no explicit map entry exists.
+     * Returns the channel template for a given target type.
      */
     @JsonIgnore
     public ChannelTemplate templateFor(NotifyTarget.Type type) {
-        ChannelTemplate t = templates == null ? null : templates.get(type);
-        if (t != null) return t;
-        if (type == NotifyTarget.Type.EMAIL && notifyTemplate != null) {
-            ChannelTemplate fallback = new ChannelTemplate();
-            fallback.setSubject(notifyTemplate.getSubject());
-            fallback.setBody(notifyTemplate.getBody());
-            return fallback;
+        return templates == null ? null : templates.get(type);
+    }
+
+    /**
+     * Populate the in-memory {@link #templates} map from relational rows.
+     * Called by {@link TopicStore} after loading from the database.
+     */
+    public void assembleTemplates(List<TopicChannelTemplate> rows) {
+        Map<NotifyTarget.Type, ChannelTemplate> map = new EnumMap<>(NotifyTarget.Type.class);
+        if (rows != null) {
+            for (TopicChannelTemplate r : rows) {
+                try {
+                    NotifyTarget.Type type = NotifyTarget.Type.valueOf(r.getChannelType());
+                    ChannelTemplate ch = new ChannelTemplate();
+                    ch.setSubject(r.getSubject());
+                    ch.setBody(r.getBody());
+                    ch.setOutputFormat(r.getOutputFormat());
+                    ch.setOutputTemplate(r.getOutputTemplate());
+                    ch.setOutputXmlTemplate(r.getOutputXmlTemplate());
+                    ch.setTransform(r.getTransform());
+                    ch.setResponseCheck(r.getResponseCheck());
+                    map.put(type, ch);
+                } catch (IllegalArgumentException ignored) {
+                    // skip unknown channel types from future versions
+                }
+            }
         }
-        return null;
+        this.templates = map;
+    }
+
+    /**
+     * Convert the in-memory {@link #templates} map into relational rows for
+     * persistence.  Called by {@link TopicStore} before saving.
+     */
+    public List<TopicChannelTemplate> disassembleTemplates() {
+        if (templates == null || templates.isEmpty()) return List.of();
+        List<TopicChannelTemplate> rows = new ArrayList<>(templates.size());
+        for (Map.Entry<NotifyTarget.Type, ChannelTemplate> e : templates.entrySet()) {
+            ChannelTemplate ch = e.getValue();
+            TopicChannelTemplate row = TopicChannelTemplate.builder()
+                    .channelType(e.getKey().name())
+                    .subject(ch.getSubject())
+                    .body(ch.getBody())
+                    .outputFormat(ch.getOutputFormat())
+                    .outputTemplate(ch.getOutputTemplate())
+                    .outputXmlTemplate(ch.getOutputXmlTemplate())
+                    .transform(ch.getTransform())
+                    .responseCheck(ch.getResponseCheck())
+                    .build();
+            rows.add(row);
+        }
+        return rows;
     }
 
     @Data
@@ -214,15 +248,5 @@ public class Topic {
             private boolean required;
             private Object defaultValue;
         }
-    }
-
-    /** @deprecated kept for legacy file compatibility only. */
-    @Deprecated
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class NotifyTemplate {
-        private String subject;
-        private String body;
     }
 }

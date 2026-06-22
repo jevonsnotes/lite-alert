@@ -4,5 +4,5 @@ import com.mybatisflex.core.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface SubscriptionMapper extends BaseMapper<Subscription> {
+public interface TopicContactMapper extends BaseMapper<TopicContact> {
 }

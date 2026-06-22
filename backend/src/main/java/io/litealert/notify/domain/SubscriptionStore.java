@@ -1,48 +1,40 @@
 package io.litealert.notify.domain;
 
-import com.mybatisflex.core.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
+/**
+ * Adapter that keeps the existing subscription API contract intact while
+ * delegating persistence to the new relational {@link TopicContactStore}.
+ *
+ * <p>Consumers ({@code NotifyDispatcher}, {@code TopicService},
+ * {@code SubscriptionController}) continue to call {@code getOrEmpty},
+ * {@code save}, and {@code delete} without modification.
+ */
 @Component
 @RequiredArgsConstructor
 public class SubscriptionStore {
 
-    private final SubscriptionMapper mapper;
+    private final TopicContactStore contactStore;
 
     public Subscription getOrEmpty(String topicId) {
-        return find(topicId).orElseGet(() -> Subscription.builder()
+        return Subscription.builder()
                 .topicId(topicId)
-                .contactIds(new java.util.ArrayList<>())
-                .build());
-    }
-
-    public synchronized Subscription save(String topicId, List<String> contactIds) {
-        Subscription s = Subscription.builder()
-                .topicId(topicId)
-                .contactIds(contactIds == null ? new java.util.ArrayList<>() : contactIds)
-                .updatedAt(Instant.now())
+                .contactIds(contactStore.findContactIdsByTopicId(topicId))
                 .build();
-        if (find(topicId).isPresent()) {
-            mapper.update(s);
-        } else {
-            mapper.insert(s);
-        }
-        return s;
     }
 
-    public synchronized void delete(String topicId) {
-        mapper.deleteById(topicId);
+    public Subscription save(String topicId, List<String> contactIds) {
+        contactStore.saveForTopic(topicId, contactIds);
+        return Subscription.builder()
+                .topicId(topicId)
+                .contactIds(contactIds == null ? List.of() : contactIds)
+                .build();
     }
 
-    public Optional<Subscription> find(String topicId) {
-        QueryWrapper qw = QueryWrapper.create()
-                .where("topic_id = ?", topicId);
-        return Optional.ofNullable(mapper.selectOneByQuery(qw));
+    public void delete(String topicId) {
+        contactStore.deleteByTopicId(topicId);
     }
 }
-

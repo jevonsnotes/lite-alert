@@ -1,5 +1,6 @@
 package io.litealert.topic.web;
 
+import io.litealert.admin.settings.SystemSettingsService;
 import io.litealert.auth.permission.PermissionService;
 import io.litealert.auth.permission.Permissions;
 import io.litealert.topic.TopicService;
@@ -27,6 +28,14 @@ public class TopicController {
 
     private final TopicService service;
     private final PermissionService permissionService;
+    private final SystemSettingsService settingsService;
+
+    @GetMapping("/settings")
+    public Map<String, Object> settings() {
+        permissionService.require(Permissions.TOPIC_VIEW);
+        var rateLimit = settingsService.current().getRateLimit();
+        return Map.of("perTopicPerMinute", rateLimit.getPerTopicPerMinute());
+    }
 
     @GetMapping
     public List<Topic> list(@RequestParam(required = false) String namespaceId) {

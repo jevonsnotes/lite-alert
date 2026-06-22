@@ -1,5 +1,5 @@
 create table if not exists la_schema_version (
-  version integer not null,
+  version int not null,
   initialized_at timestamp not null
 );
 
@@ -36,13 +36,26 @@ create table if not exists la_topic (
   status varchar(16) not null,
   auth_json text null,
   inbound_format_json text null,
-  templates_json text null,
-  transform_json text null,
-  notify_template_json text null,
   created_at timestamp null,
   updated_at timestamp null,
   published_at timestamp null,
   constraint uk_topic_namespace_name unique(namespace_id, name)
+);
+
+create table if not exists la_topic_channel_template (
+  id bigserial primary key,
+  topic_id varchar(64) not null,
+  channel_type varchar(16) not null,
+  subject varchar(500) null,
+  body text null,
+  output_format varchar(16) null,
+  output_template text null,
+  output_xml_template text null,
+  transform_json text null,
+  response_check_json text null,
+  created_at timestamp null,
+  updated_at timestamp null,
+  constraint uk_tct_topic_channel unique(topic_id, channel_type)
 );
 
 create table if not exists la_api_key (
@@ -53,13 +66,21 @@ create table if not exists la_api_key (
   key_hash varchar(128) not null,
   valid_from timestamp null,
   valid_until timestamp null,
-  scopes_json text null,
   status varchar(16) not null,
   created_at timestamp null,
   last_used_at timestamp null,
   usage_count bigint not null default 0,
   rotate_count bigint not null default 0,
-  rate_limit_per_minute int
+  rate_limit_per_minute int null
+);
+
+create table if not exists la_api_key_scope (
+  id bigserial primary key,
+  api_key_id varchar(64) not null,
+  scope_type varchar(16) not null,
+  scope_id varchar(64) not null,
+  created_at timestamp null,
+  constraint uk_aks_key_type_id unique(api_key_id, scope_type, scope_id)
 );
 
 create table if not exists la_notify_target (
@@ -73,10 +94,12 @@ create table if not exists la_notify_target (
   created_at timestamp null
 );
 
-create table if not exists la_subscription (
-  topic_id varchar(64) primary key,
-  contact_ids_json text null,
-  updated_at timestamp null
+create table if not exists la_topic_contact (
+  id bigserial primary key,
+  topic_id varchar(64) not null,
+  contact_id varchar(64) not null,
+  created_at timestamp null,
+  constraint uk_tc_topic_contact unique(topic_id, contact_id)
 );
 
 create table if not exists la_system_settings (
@@ -111,4 +134,27 @@ create table if not exists la_notify_delivery (
   created_at timestamp not null,
   updated_at timestamp not null,
   finished_at timestamp null
+);
+
+create index if not exists idx_nd_topic_id on la_notify_delivery(topic_id);
+create index if not exists idx_nd_status on la_notify_delivery(status);
+create index if not exists idx_nd_next_retry on la_notify_delivery(next_retry_at);
+create index if not exists idx_nd_channel on la_notify_delivery(channel);
+create index if not exists idx_nd_locked_by on la_notify_delivery(locked_by);
+create index if not exists idx_nd_trace_id on la_notify_delivery(trace_id);
+
+create table if not exists la_role (
+  id varchar(64) primary key,
+  name varchar(64) not null unique,
+  description varchar(500) null,
+  system_builtin boolean not null default false,
+  permissions_json text not null default '[]',
+  created_at timestamp null,
+  updated_at timestamp null
+);
+
+create table if not exists la_user_role (
+  user_id varchar(64) not null,
+  role_id varchar(64) not null,
+  primary key (user_id, role_id)
 );

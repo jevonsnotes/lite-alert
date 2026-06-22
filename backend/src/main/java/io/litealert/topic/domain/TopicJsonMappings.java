@@ -10,8 +10,11 @@ import java.util.*;
 /**
  * Manual JSON mapping helpers for Topic fields. Kept as utility methods
  * rather than MyBatis TypeHandlers because the fields are too heterogeneous
- * (Auth, JsonNode, EnumMap<T, ChannelTemplate>, Transform, NotifyTemplate)
- * and a single TypeHandler approach caused arg-type-mismatch errors at runtime.
+ * (Auth, JsonNode) and a single TypeHandler approach caused arg-type-mismatch
+ * errors at runtime.
+ *
+ * <p>Template and scope mappings are now handled relationally by
+ * {@link TopicChannelTemplateStore} and {@link ApiKeyScopeStore}.
  */
 public final class TopicJsonMappings {
 
@@ -31,45 +34,5 @@ public final class TopicJsonMappings {
 
     public static String writeInboundFormat(DbJson json, JsonNode node) {
         return json.write(node);
-    }
-
-    public static Map<NotifyTarget.Type, Topic.ChannelTemplate> readTemplates(DbJson json, String value) {
-        if (value == null || value.isBlank()) return new EnumMap<>(NotifyTarget.Type.class);
-        Map<String, Topic.ChannelTemplate> raw = json.read(value,
-                new TypeReference<Map<String, Topic.ChannelTemplate>>() {}, new HashMap<>());
-        Map<NotifyTarget.Type, Topic.ChannelTemplate> result = new EnumMap<>(NotifyTarget.Type.class);
-        for (Map.Entry<String, Topic.ChannelTemplate> e : raw.entrySet()) {
-            try {
-                result.put(NotifyTarget.Type.valueOf(e.getKey()), e.getValue());
-            } catch (IllegalArgumentException ignored) {
-                // skip unknown types from future versions
-            }
-        }
-        return result;
-    }
-
-    public static String writeTemplates(DbJson json, Map<NotifyTarget.Type, Topic.ChannelTemplate> templates) {
-        if (templates == null || templates.isEmpty()) return null;
-        Map<String, Topic.ChannelTemplate> raw = new LinkedHashMap<>();
-        for (Map.Entry<NotifyTarget.Type, Topic.ChannelTemplate> e : templates.entrySet()) {
-            raw.put(e.getKey().name(), e.getValue());
-        }
-        return json.write(raw);
-    }
-
-    public static Topic.Transform readTransform(DbJson json, String value) {
-        return json.read(value, Topic.Transform.class);
-    }
-
-    public static String writeTransform(DbJson json, Topic.Transform transform) {
-        return json.write(transform);
-    }
-
-    public static Topic.NotifyTemplate readNotifyTemplate(DbJson json, String value) {
-        return json.read(value, Topic.NotifyTemplate.class);
-    }
-
-    public static String writeNotifyTemplate(DbJson json, Topic.NotifyTemplate notifyTemplate) {
-        return json.write(notifyTemplate);
     }
 }

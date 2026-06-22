@@ -10,6 +10,7 @@ import io.litealert.notify.domain.Subscription;
 import io.litealert.notify.domain.SubscriptionStore;
 import io.litealert.topic.domain.Topic;
 import io.litealert.topic.domain.TopicStore;
+import io.litealert.topic.domain.TopicChannelTemplateStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +30,7 @@ class TopicServiceTest {
 
     private TopicStore store;
     private SubscriptionStore subscriptionStore;
+    private TopicChannelTemplateStore templateStore;
     private AuditLogger audit;
     private TopicService service;
 
@@ -36,13 +38,14 @@ class TopicServiceTest {
     void setUp() {
         store = mock(TopicStore.class);
         subscriptionStore = mock(SubscriptionStore.class);
+        templateStore = mock(TopicChannelTemplateStore.class);
         NamespaceService namespaceService = mock(NamespaceService.class);
         CurrentUser currentUser = mock(CurrentUser.class);
         PermissionService permissionService = mock(PermissionService.class);
         audit = mock(AuditLogger.class);
         when(currentUser.idOrThrow()).thenReturn("u_1");
         when(store.save(any(Topic.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new TopicService(store, namespaceService, subscriptionStore, currentUser, audit, permissionService);
+        service = new TopicService(store, namespaceService, subscriptionStore, templateStore, currentUser, audit, permissionService);
     }
 
     @Test
@@ -75,7 +78,7 @@ class TopicServiceTest {
         when(store.findByNamespaceAndName("ns_1", "paid_new")).thenReturn(Optional.empty());
 
         Topic updated = service.update("t_1", new TopicService.UpdateRequest(
-                "paid_new", "new desc", null, null, null, null, null));
+                "paid_new", "new desc", null, null, null));
 
         assertThat(updated.getName()).isEqualTo("paid_new");
         assertThat(updated.getDescription()).isEqualTo("new desc");
@@ -94,7 +97,7 @@ class TopicServiceTest {
         when(store.findById("t_1")).thenReturn(Optional.of(topic));
 
         assertThatThrownBy(() -> service.update("t_1", new TopicService.UpdateRequest(
-                "paid_new", null, null, null, null, null, null)))
+                "paid_new", null, null, null, null)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.CONFLICT);
@@ -112,7 +115,7 @@ class TopicServiceTest {
         when(store.findById("t_1")).thenReturn(Optional.of(topic));
 
         assertThatThrownBy(() -> service.update("t_1", new TopicService.UpdateRequest(
-                "paid_new", null, null, null, null, null, null)))
+                "paid_new", null, null, null, null)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(ErrorCode.CONFLICT);

@@ -158,3 +158,26 @@ create table if not exists la_user_role (
   role_id varchar(64) not null,
   primary key (user_id, role_id)
 );
+
+-- Seed admin user (password: admin123, stored as bcrypt(md5("admin123")))
+insert into la_user(id, username, password_hash, enabled, created_at)
+select 'u_admin', 'admin', '$2a$10$npZpvBMX1imudiwgxcK69epwpT8yhikyVIX4Y/unzzjztCQeZDfWe', true, now()
+where not exists (select 1 from la_user where id = 'u_admin');
+
+-- Seed built-in roles
+insert into la_role(id, name, description, system_builtin, permissions_json, created_at)
+select 'r_super_admin', '超级管理员', 'All permissions', true,
+  '["DASHBOARD_VIEW","STATS_VIEW","STATS_VIEW_ALL","NAMESPACE_VIEW","NAMESPACE_VIEW_ALL","NAMESPACE_CREATE","NAMESPACE_UPDATE","NAMESPACE_DISABLE","NAMESPACE_DELETE","TOPIC_VIEW","TOPIC_VIEW_ALL","TOPIC_CREATE","TOPIC_UPDATE","TOPIC_PUBLISH","TOPIC_DISABLE","TOPIC_DELETE","APIKEY_VIEW","APIKEY_VIEW_ALL","APIKEY_CREATE","APIKEY_UPDATE","APIKEY_ROTATE","APIKEY_DELETE","CONTACT_VIEW","CONTACT_VIEW_ALL","CONTACT_CREATE","CONTACT_UPDATE","CONTACT_DELETE","AUDIT_VIEW","AUDIT_VIEW_ALL","DELIVERY_VIEW","DELIVERY_PAYLOAD_READ","USER_VIEW","USER_CREATE","USER_UPDATE","USER_DELETE","ROLE_VIEW","ROLE_CREATE","ROLE_UPDATE","ROLE_DELETE","SYSTEM_HEALTH_VIEW","SYSTEM_SETTINGS_VIEW","SYSTEM_SETTINGS_UPDATE","MAIL_CONFIG_VIEW","MAIL_CONFIG_UPDATE","SMTP_TEST"]',
+  now()
+where not exists (select 1 from la_role where id = 'r_super_admin');
+
+insert into la_role(id, name, description, system_builtin, permissions_json, created_at)
+select 'r_normal_user', '普通用户', 'Basic user permissions', true,
+  '["DASHBOARD_VIEW","STATS_VIEW","NAMESPACE_VIEW","NAMESPACE_CREATE","NAMESPACE_UPDATE","NAMESPACE_DISABLE","NAMESPACE_DELETE","TOPIC_VIEW","TOPIC_CREATE","TOPIC_UPDATE","TOPIC_PUBLISH","TOPIC_DISABLE","TOPIC_DELETE","APIKEY_VIEW","APIKEY_CREATE","APIKEY_UPDATE","APIKEY_ROTATE","APIKEY_DELETE","CONTACT_VIEW","CONTACT_CREATE","CONTACT_UPDATE","CONTACT_DELETE","AUDIT_VIEW","DELIVERY_VIEW","DELIVERY_PAYLOAD_READ"]',
+  now()
+where not exists (select 1 from la_role where id = 'r_normal_user');
+
+-- Seed admin role assignment
+insert into la_user_role(user_id, role_id)
+select 'u_admin', 'r_super_admin'
+where not exists (select 1 from la_user_role where user_id = 'u_admin' and role_id = 'r_super_admin');

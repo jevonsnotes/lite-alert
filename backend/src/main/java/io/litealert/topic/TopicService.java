@@ -12,6 +12,7 @@ import io.litealert.namespace.NamespaceService;
 import io.litealert.namespace.domain.Namespace;
 import io.litealert.notify.domain.SubscriptionStore;
 import io.litealert.topic.domain.Topic;
+import io.litealert.topic.domain.TopicChannelTemplateStore;
 import io.litealert.topic.domain.TopicStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class TopicService {
     private final TopicStore store;
     private final NamespaceService namespaceService;
     private final SubscriptionStore subscriptionStore;
+    private final TopicChannelTemplateStore templateStore;
     private final CurrentUser currentUser;
     private final AuditLogger audit;
     private final PermissionService permissionService;
@@ -114,28 +116,9 @@ public class TopicService {
                     "name", req.name()));
         }
 
-        // Channel templates (preferred path).
+        // Channel templates — fully relational now.
         if (req.templates() != null) {
             t.setTemplates(new java.util.EnumMap<>(req.templates()));
-        }
-
-        // Legacy fields fold into specific channels:
-        //   notifyTemplate → EMAIL channel template
-        //   transform      → WEBHOOK channel template's transform
-        if (req.notifyTemplate() != null) {
-            ensureTemplates(t);
-            Topic.ChannelTemplate ch = t.getTemplates().computeIfAbsent(
-                    io.litealert.notify.domain.NotifyTarget.Type.EMAIL,
-                    k -> new Topic.ChannelTemplate());
-            ch.setSubject(req.notifyTemplate().getSubject());
-            ch.setBody(req.notifyTemplate().getBody());
-        }
-        if (req.transform() != null) {
-            ensureTemplates(t);
-            Topic.ChannelTemplate ch = t.getTemplates().computeIfAbsent(
-                    io.litealert.notify.domain.NotifyTarget.Type.WEBHOOK,
-                    k -> new Topic.ChannelTemplate());
-            ch.setTransform(req.transform());
         }
 
         if (req.inboundFormat() != null) {
@@ -225,6 +208,7 @@ public class TopicService {
                 .publishedAt(copyAsDraft ? null : source.getPublishedAt())
                 .build();
         store.save(copied);
+        templateStore.copy(id, copied.getId());
         subscriptionStore.save(copied.getId(), subscriptionStore.getOrEmpty(source.getId()).getContactIds());
         audit.log("topic.copy", Map.of(
                 "actor", currentUser.idOrThrow(),
@@ -246,12 +230,6 @@ public class TopicService {
         return Topic.KeyLocation.valueOf(value);
     }
 
-    private void ensureTemplates(Topic t) {
-        if (t.getTemplates() == null) {
-            t.setTemplates(new java.util.EnumMap<>(io.litealert.notify.domain.NotifyTarget.Type.class));
-        }
-    }
-
     public record CreateRequest(
             String name,
             String description,
@@ -266,10 +244,6 @@ public class TopicService {
             String description,
             Topic.Auth auth,
             JsonNode inboundFormat,
-            java.util.Map<io.litealert.notify.domain.NotifyTarget.Type, Topic.ChannelTemplate> templates,
-            // legacy fields kept temporarily so the old UI doesn't 400; both
-            // are folded into the EMAIL/WEBHOOK channel templates on save.
-            Topic.Transform transform,
-            Topic.NotifyTemplate notifyTemplate
+            java.util.Map<io.litealert.notify.domain.NotifyTarget.Type, Topic.ChannelTemplate> templates
     ) {}
 }
