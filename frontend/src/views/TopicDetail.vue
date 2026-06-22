@@ -64,7 +64,7 @@ type Topic = {
 
 type ApiKeyView = { id: string; name: string; prefix: string; status: string; validUntil?: string }
 type Contact = { id: string; type: ChannelType; label: string; endpoint: string; enabled: boolean }
-type Settings = { rateLimit?: { perTopicPerMinute?: number } }
+type Settings = { perTopicPerMinute?: number }
 
 const route = useRoute()
 const router = useRouter()
@@ -456,8 +456,8 @@ async function loadTopic() {
   topic.value = await get<Topic>(`/topics/${route.params.id}`)
   originalTopicName.value = topic.value.name
   try {
-    const settings = await get<Settings>('/admin/settings')
-    topicDefaultLimit.value = settings.rateLimit?.perTopicPerMinute ?? 60
+    const settings = await get<Settings>('/topics/settings')
+    topicDefaultLimit.value = settings.perTopicPerMinute ?? 60
   } catch { topicDefaultLimit.value = 60 }
   schemaJson.value = JSON.stringify(topic.value.inboundFormat ?? {}, null, 2)
   syncSchemaJsonToVisual()

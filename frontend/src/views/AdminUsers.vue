@@ -33,7 +33,20 @@ function openCreate() {
   draft.roleIds = []
   dialogVisible.value = true
 }
+function validatePassword(password: string) {
+  if (password.length < 8) {
+    ElMessage.warning('密码至少 8 位')
+    return false
+  }
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    ElMessage.warning('密码必须同时包含大写字母、小写字母和数字')
+    return false
+  }
+  return true
+}
+
 async function submit() {
+  if (!validatePassword(draft.password)) return
   await post('/users', { ...draft, password: md5(draft.password) })
   ElMessage.success('已创建')
   dialogVisible.value = false
@@ -56,10 +69,7 @@ function openReset(u: any) {
   showResetDialog.value = true
 }
 async function submitReset() {
-  if (!newPassword.value || newPassword.value.length < 6) {
-    ElMessage.warning('密码至少 6 位')
-    return
-  }
+  if (!validatePassword(newPassword.value)) return
   await patch(`/users/${resetTarget.value!.id}`, { password: md5(newPassword.value) })
   ElMessage.success('已重置')
   showResetDialog.value = false
@@ -113,7 +123,7 @@ async function remove(u: any) {
     <el-dialog v-model="dialogVisible" title="新建用户" width="460px">
       <el-form label-width="80px">
         <el-form-item label="用户名" required><el-input v-model="draft.username" /></el-form-item>
-        <el-form-item label="密码" required><el-input v-model="draft.password" type="password" show-password /></el-form-item>
+        <el-form-item label="密码" required><el-input v-model="draft.password" type="password" show-password placeholder="至少 8 位，包含大小写字母和数字" /></el-form-item>
         <el-form-item label="角色">
           <el-select v-model="draft.roleIds" multiple style="width: 100%">
             <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
@@ -127,7 +137,7 @@ async function remove(u: any) {
     </el-dialog>
 
     <el-dialog v-model="showResetDialog" title="重置密码" width="400px">
-      <el-input v-model="newPassword" type="password" show-password placeholder="≥ 6 位" />
+      <el-input v-model="newPassword" type="password" show-password placeholder="至少 8 位，包含大小写字母和数字" />
       <template #footer>
         <el-button @click="showResetDialog = false">取消</el-button>
         <el-button type="primary" @click="submitReset">提交</el-button>
