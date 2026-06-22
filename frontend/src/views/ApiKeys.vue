@@ -208,10 +208,10 @@ function scopeLabel(s: Scope) {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="有效期" width="220">
+      <el-table-column label="有效期" width="180">
         <template #default="{ row }">
           <span v-if="!row.validUntil">永久有效</span>
-          <span v-else>至 {{ formatDateTime(row.validUntil) }}</span>
+          <span v-else>{{ formatDateTime(row.validUntil) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
