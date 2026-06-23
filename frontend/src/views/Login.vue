@@ -8,7 +8,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-const username = ref('admin')
+const username = ref('')
 const password = ref('')
 const loading = ref(false)
 
@@ -41,7 +41,7 @@ async function onSubmit() {
       </template>
       <el-form @submit.prevent="onSubmit" label-position="top">
         <el-form-item label="用户名">
-          <el-input v-model="username" placeholder="admin" autocomplete="username" />
+          <el-input v-model="username" placeholder="请输入用户名" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码">
           <el-input
@@ -57,7 +57,6 @@ async function onSubmit() {
           登录
         </el-button>
       </el-form>
-      <div class="hint">默认账号 admin / admin123（首次部署后请尽快修改密码）</div>
     </el-card>
   </div>
 </template>
@@ -75,5 +74,4 @@ async function onSubmit() {
 .login-card { width: 380px; background: var(--la-bg-elevated); color: var(--la-fg); border: 1px solid var(--la-border); }
 .login-header h2 { margin: 0; color: var(--la-accent); }
 .login-header span { color: var(--la-fg-muted); font-size: 13px; }
-.hint { color: var(--la-fg-muted); font-size: 12px; margin-top: 12px; text-align: center; }
 </style>

@@ -56,7 +56,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-默认使用 H2 文件数据库，数据目录位于 `docker/data`。启动后访问：
+默认使用 H2 文件数据库，数据目录位于 `docker/data`。初始默认账号为 `admin` / `admin123`，**首次部署后请尽快修改密码**。启动后访问：
 
 ```text
 http://localhost:8080
