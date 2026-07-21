@@ -21,6 +21,8 @@ public class SystemSettings {
     private RateLimitConfig rateLimit = new RateLimitConfig();
     private List<String> payloadMaskingSensitiveWords = defaultSensitiveWords();
     private Integer syncTimeoutSeconds = 30;
+    /** Outbound target guard for scheduled tasks (API/TCP). Default off (permit all). */
+    private TaskTargetGuardConfig taskTargetGuard = new TaskTargetGuardConfig();
 
     public static List<String> defaultSensitiveWords() {
         return List.of("password", "passwd", "pwd", "token", "secret", "authorization",
@@ -64,5 +66,42 @@ public class SystemSettings {
         private int perApiKeyPerMinute = 200;
         @Builder.Default
         private int perIpPerMinute = 30;
+    }
+
+    /**
+     * Outbound target guard config for scheduled tasks (API + TCP). When {@code enabled} is true,
+     * targets whose resolved IP matches any {@code blockedCidrs} (and not an {@code allowedCidrs})
+     * are rejected; {@code blockedDomains} are hostname-suffix matches (e.g. {@code .internal.corp}).
+     * Default is disabled (permit all). CIDR/domain entries are validated on save; invalid entries
+     * are dropped with a warning rather than blocking the save.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TaskTargetGuardConfig {
+        private boolean enabled = false;
+        /** CIDR blocks to reject (e.g. 10.0.0.0/8). Defaults cover private/loopback/link-local/zero. */
+        private List<String> blockedCidrs = defaultBlockedCidrs();
+        /** CIDR blocks to always permit (overrides blockedCidrs). */
+        private List<String> allowedCidrs = new java.util.ArrayList<>();
+        /** Hostname suffix rules to reject (matched against the unresolved host, case-insensitive). */
+        private List<String> blockedDomains = new java.util.ArrayList<>();
+    }
+
+    /** Built-in blocked CIDRs: IPv4 private/loopback/link-local/zero + IPv6 loopback/ULA/link-local/unspecified. */
+    public static List<String> defaultBlockedCidrs() {
+        return new java.util.ArrayList<>(List.of(
+                // IPv4
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "192.168.0.0/16",
+                "127.0.0.0/8",
+                "169.254.0.0/16",
+                "0.0.0.0/8",
+                // IPv6
+                "::1/128",        // loopback
+                "fc00::/7",       // unique local
+                "fe80::/10",      // link-local
+                "::/128"));       // unspecified
     }
 }

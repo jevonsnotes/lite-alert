@@ -51,7 +51,10 @@ public enum ErrorCode {
     RATE_LIMITED(429, "rate limit exceeded"),
     IP_NOT_ALLOWED(401, "remote ip not in whitelist"),
     SCHEMA_VALIDATION_FAILED(400, "payload does not match topic schema"),
-    TRANSFORM_FAILED(400, "payload transform failed");
+    TRANSFORM_FAILED(400, "payload transform failed"),
+
+    // ---- scheduler ----
+    TARGET_BLOCKED(403, "outbound target blocked by guard");
 
     private final int status;
     private final String defaultMessage;

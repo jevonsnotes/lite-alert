@@ -26,6 +26,12 @@ type MailConfigView = {
 } | null
 
 type Span = { value: number; unit: 'DAYS' | 'MONTHS' | 'YEARS' }
+type TaskTargetGuardConfig = {
+  enabled: boolean
+  blockedCidrs: string[]
+  allowedCidrs: string[]
+  blockedDomains: string[]
+}
 type Settings = {
   auditRetention: Span
   deliveryRetention: Span
@@ -37,6 +43,7 @@ type Settings = {
   }
   payloadMaskingSensitiveWords: string[]
   syncTimeoutSeconds: number
+  taskTargetGuard?: TaskTargetGuardConfig
 }
 
 const UNITS = [
@@ -53,12 +60,18 @@ const settings = reactive<Settings>({
   dashboardDefaultTrend: { value: 14, unit: 'DAYS' },
   rateLimit: { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 },
   payloadMaskingSensitiveWords: [],
-  syncTimeoutSeconds: 30
+  syncTimeoutSeconds: 30,
+  taskTargetGuard: { enabled: false, blockedCidrs: [], allowedCidrs: [], blockedDomains: [] }
 })
 const settingsSaving = ref(false)
 const newSensitiveWord = ref('')
 const newSensitiveWordVisible = ref(false)
 const newSensitiveWordInput = ref<any>()
+
+// guard list editors
+const newBlockedCidr = ref('')
+const newAllowedCidr = ref('')
+const newBlockedDomain = ref('')
 
 const form = reactive({
   host: '',
@@ -94,6 +107,7 @@ async function loadAll() {
     settings.rateLimit = s.rateLimit ?? { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 }
     settings.payloadMaskingSensitiveWords = s.payloadMaskingSensitiveWords ?? []
     settings.syncTimeoutSeconds = s.syncTimeoutSeconds ?? 30
+    settings.taskTargetGuard = s.taskTargetGuard ?? { enabled: false, blockedCidrs: [], allowedCidrs: [], blockedDomains: [] }
   } finally {
     loading.value = false
   }
@@ -154,7 +168,8 @@ async function saveSettings() {
       dashboardDefaultTrend: { ...settings.dashboardDefaultTrend },
       rateLimit: { ...settings.rateLimit },
       payloadMaskingSensitiveWords: [...settings.payloadMaskingSensitiveWords],
-      syncTimeoutSeconds: settings.syncTimeoutSeconds
+      syncTimeoutSeconds: settings.syncTimeoutSeconds,
+      taskTargetGuard: settings.taskTargetGuard ? { ...settings.taskTargetGuard } : undefined
     })
     settings.auditRetention = saved.auditRetention
     settings.deliveryRetention = saved.deliveryRetention
@@ -162,6 +177,7 @@ async function saveSettings() {
     settings.rateLimit = saved.rateLimit
     settings.payloadMaskingSensitiveWords = saved.payloadMaskingSensitiveWords ?? []
     settings.syncTimeoutSeconds = saved.syncTimeoutSeconds ?? 30
+    settings.taskTargetGuard = saved.taskTargetGuard ?? settings.taskTargetGuard
     ElMessage.success('已保存')
   } finally {
     settingsSaving.value = false
@@ -182,6 +198,13 @@ function addSensitiveWord() {
   }
   newSensitiveWord.value = ''
   newSensitiveWordVisible.value = false
+}
+
+function removeItem(list: string[], v: string) { const i = list.indexOf(v); if (i >= 0) list.splice(i, 1) }
+function addItem(list: string[], v: string, reset: () => void) {
+  const t = v.trim()
+  if (t && !list.includes(t)) list.push(t)
+  reset()
 }
 </script>
 
@@ -282,6 +305,53 @@ function addSensitiveWord() {
         </el-form-item>
         <div class="form-actions">
           <el-button type="primary" :loading="settingsSaving" @click="saveSettings">保存</el-button>
+        </div>
+      </el-form>
+    </el-card>
+
+    <!-- ============ OUTBOUND TARGET GUARD ============ -->
+    <h3 class="section-h">出站目标防护（定时任务）</h3>
+    <el-card class="block">
+      <el-form label-width="180px">
+        <el-form-item label="启用出站防护">
+          <el-switch v-model="settings.taskTargetGuard!.enabled" />
+          <span class="muted" style="margin-left: 12px">开启后，API/TCP 任务发起连接前校验目标地址；默认关闭（放行全部）。</span>
+        </el-form-item>
+        <el-form-item label="拦截网段 (CIDR)">
+          <div class="tag-input-wrap">
+            <el-tag v-for="(c, i) in settings.taskTargetGuard!.blockedCidrs" :key="'b'+i" closable size="small"
+                    @close="removeItem(settings.taskTargetGuard!.blockedCidrs, c)">{{ c }}</el-tag>
+            <el-input v-model="newBlockedCidr" size="small" style="width: 180px; margin-left: 6px"
+                      placeholder="如 10.0.0.0/8" @keyup.enter="addItem(settings.taskTargetGuard!.blockedCidrs, newBlockedCidr, () => newBlockedCidr = '')" />
+            <el-button size="small" link
+                       @click="addItem(settings.taskTargetGuard!.blockedCidrs, newBlockedCidr, () => newBlockedCidr = '')">添加</el-button>
+          </div>
+          <div class="muted">命中即拦截。默认含私有网段(10/172.16/192.168)、回环(127)、链路本地(169.254，含云元数据)、0/8。</div>
+        </el-form-item>
+        <el-form-item label="允许网段 (CIDR)">
+          <div class="tag-input-wrap">
+            <el-tag v-for="(c, i) in settings.taskTargetGuard!.allowedCidrs" :key="'a'+i" closable size="small" type="success"
+                    @close="removeItem(settings.taskTargetGuard!.allowedCidrs, c)">{{ c }}</el-tag>
+            <el-input v-model="newAllowedCidr" size="small" style="width: 180px; margin-left: 6px"
+                      placeholder="如 10.0.0.5/32" @keyup.enter="addItem(settings.taskTargetGuard!.allowedCidrs, newAllowedCidr, () => newAllowedCidr = '')" />
+            <el-button size="small" link
+                       @click="addItem(settings.taskTargetGuard!.allowedCidrs, newAllowedCidr, () => newAllowedCidr = '')">添加</el-button>
+          </div>
+          <div class="muted">优先级高于拦截网段：可用于放行特定内网监控目标。非法 CIDR 保存时会被自动剔除。</div>
+        </el-form-item>
+        <el-form-item label="拦截域名后缀">
+          <div class="tag-input-wrap">
+            <el-tag v-for="(d, i) in settings.taskTargetGuard!.blockedDomains" :key="'d'+i" closable size="small" type="warning"
+                    @close="removeItem(settings.taskTargetGuard!.blockedDomains, d)">{{ d }}</el-tag>
+            <el-input v-model="newBlockedDomain" size="small" style="width: 180px; margin-left: 6px"
+                      placeholder="如 internal.corp" @keyup.enter="addItem(settings.taskTargetGuard!.blockedDomains, newBlockedDomain, () => newBlockedDomain = '')" />
+            <el-button size="small" link
+                       @click="addItem(settings.taskTargetGuard!.blockedDomains, newBlockedDomain, () => newBlockedDomain = '')">添加</el-button>
+          </div>
+          <div class="muted">按主机名后缀拦截（不区分大小写，如 internal.corp 匹配 host.internal.corp）。校验在 DNS 解析前。</div>
+        </el-form-item>
+        <div class="form-actions">
+          <el-button type="primary" :loading="settingsSaving" @click="saveSettings">保存并立即生效</el-button>
         </div>
       </el-form>
     </el-card>
