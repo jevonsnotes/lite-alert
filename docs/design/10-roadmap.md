@@ -16,6 +16,7 @@
 | 通知通道 | EMAIL、DINGTALK、FEISHU、WECOM、WEBHOOK |
 | 模板与转换 | Mustache、JSONPath mapping、Webhook JSON/XML 出站模板、响应断言 |
 | 投递管理 | NotifyDelivery 持久化、worker、查询接口、历史清理 |
+| 定时任务 | 主动定时调用（首期 API 任务）：草稿/发布双轨、Cron 热更新、多条件响应断言（AND/OR）、调用记录与仪表盘统计 |
 | 运维部署 | Dockerfile、Docker Compose、Docker Hub 镜像名、健康检查、外部数据库 profile |
 
 ## M0 · 工程脚手架（已完成）
@@ -83,6 +84,7 @@
 3. **前端体验优化**：复杂表单拆分、模板编辑器增强、错误提示统一、移动端/窄屏适配。
 4. **投递可观测增强**：按 traceId 串联调用、投递、重试、下游响应断言结果。
 5. **安全加固**：敏感 payload 查看审计、ApiKey 轮换提醒、永久 key 风险提示。
+6. **定时任务能力**：详见 12-scheduled-tasks.md。已完成首期 API 任务（草稿/发布、Cron 热更新、多条件断言、调用记录、仪表盘）；后续可补失败重试/告警联动、最小触发间隔、更多任务类型。
 
 ## M9 · 可选增强
 

@@ -67,7 +67,7 @@ public final class TemplateFunctions {
 
     /** Legacy syntax: {{#func}}body{{/func}} */
     private static final Pattern FUNC_CALL_SECTION =
-            Pattern.compile("\\{\\{\\s*#(md5|sha256|upper|lower|trim|substr|base64)\\s*\\}\\}(.*?)\\{\\{\\s*/\\1\\s*\\}\\}",
+            Pattern.compile("\\{\\{\\s*#(md5|sha256|upper|lower|trim|substr|base64|json|jsonescape)\\s*\\}\\}(.*?)\\{\\{\\s*/\\1\\s*\\}\\}",
                     Pattern.DOTALL);
 
     /**
@@ -141,9 +141,35 @@ public final class TemplateFunctions {
             }
             case "base64":
                 return Base64.getEncoder().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+            case "json":
+            case "jsonescape":
+                // JSON-string-escape: makes a value safe to embed inside a JSON string literal
+                // (escapes ", \, control chars). Use {{@json($.response)}} to inline raw bodies.
+                return jsonEscape(raw);
             default:
                 return raw;
         }
+    }
+
+    private static String jsonEscape(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"':  sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n");  break;
+                case '\r': sb.append("\\r");  break;
+                case '\t': sb.append("\\t");  break;
+                case '\b': sb.append("\\b");  break;
+                case '\f': sb.append("\\f");  break;
+                default:
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -236,6 +262,7 @@ public final class TemplateFunctions {
         vars.add(Map.of("group", "函数", "name", "@trim",      "desc", "去除首尾空格"));
         vars.add(Map.of("group", "函数", "name", "@substr",    "desc", "截取子串，如 {{@substr($.name|0|5)}}"));
         vars.add(Map.of("group", "函数", "name", "@base64",    "desc", "Base64 编码"));
+        vars.add(Map.of("group", "函数", "name", "@json",      "desc", "JSON 字符串转义，如 {{@json($.response)}}，用于安全嵌入含特殊字符的值"));
         return vars;
     }
 }

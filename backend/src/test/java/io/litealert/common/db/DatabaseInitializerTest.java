@@ -65,7 +65,9 @@ class DatabaseInitializerTest {
                 .doesNotContain("USER_VIEW", "USER_CREATE", "USER_UPDATE", "USER_DELETE")
                 .doesNotContain("ROLE_VIEW", "ROLE_CREATE", "ROLE_UPDATE", "ROLE_DELETE")
                 .doesNotContain("SYSTEM_HEALTH_VIEW", "SYSTEM_SETTINGS_VIEW", "SYSTEM_SETTINGS_UPDATE")
-                .doesNotContain("MAIL_CONFIG_VIEW", "MAIL_CONFIG_UPDATE", "SMTP_TEST");
+                .doesNotContain("MAIL_CONFIG_VIEW", "MAIL_CONFIG_UPDATE", "SMTP_TEST")
+                .doesNotContain("SCHEDULER_TASK_VIEW_ALL", "SCHEDULER_TASK_MANAGE", "SCHEDULER_TASK_PUBLISH")
+                .doesNotContain("SCHEDULER_CALL_VIEW_ALL", "SCHEDULER_NOTIFY_MANAGE");
         assertThat(normalUserPermissions).containsExactlyInAnyOrderElementsOf(
                 Permissions.ALL.stream()
                         .filter(p -> !p.endsWith("_ALL"))
@@ -74,6 +76,9 @@ class DatabaseInitializerTest {
                         .filter(p -> !p.startsWith("SYSTEM_"))
                         .filter(p -> !p.startsWith("MAIL_CONFIG_"))
                         .filter(p -> !p.equals("SMTP_TEST"))
+                        .filter(p -> !p.equals("SCHEDULER_TASK_MANAGE"))
+                        .filter(p -> !p.equals("SCHEDULER_TASK_PUBLISH"))
+                        .filter(p -> !p.equals("SCHEDULER_NOTIFY_MANAGE"))
                         .toList());
     }
 

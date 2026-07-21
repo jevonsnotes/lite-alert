@@ -51,6 +51,13 @@ const permTreeData = [
     { label: 'ApiKey_编辑（APIKEY_UPDATE）', id: 'APIKEY_UPDATE' },
     { label: 'ApiKey_轮换（APIKEY_ROTATE）', id: 'APIKEY_ROTATE' },
     { label: 'ApiKey_删除（APIKEY_DELETE）', id: 'APIKEY_DELETE' }] },
+  { label: '定时任务', id: 'g_scheduler', children: [
+    { label: '定时任务_查看（SCHEDULER_TASK_VIEW）', id: 'SCHEDULER_TASK_VIEW' },
+    { label: '定时任务_查看（所有）（SCHEDULER_TASK_VIEW_ALL）', id: 'SCHEDULER_TASK_VIEW_ALL' },
+    { label: '定时任务_管理（SCHEDULER_TASK_MANAGE）', id: 'SCHEDULER_TASK_MANAGE' },
+    { label: '定时任务_发布（SCHEDULER_TASK_PUBLISH）', id: 'SCHEDULER_TASK_PUBLISH' },
+    { label: '调用记录_查看（SCHEDULER_CALL_VIEW）', id: 'SCHEDULER_CALL_VIEW' },
+    { label: '调用记录_查看（所有）（SCHEDULER_CALL_VIEW_ALL）', id: 'SCHEDULER_CALL_VIEW_ALL' }] },
   { label: '通知目标', id: 'g_contact', children: [
     { label: '通知目标_查看（CONTACT_VIEW）', id: 'CONTACT_VIEW' },
     { label: '通知目标_查看（所有）（CONTACT_VIEW_ALL）', id: 'CONTACT_VIEW_ALL' },

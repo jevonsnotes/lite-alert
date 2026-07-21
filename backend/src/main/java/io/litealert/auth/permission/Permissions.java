@@ -48,6 +48,14 @@ public final class Permissions {
     public static final String MAIL_CONFIG_VIEW = "MAIL_CONFIG_VIEW";
     public static final String MAIL_CONFIG_UPDATE = "MAIL_CONFIG_UPDATE";
     public static final String SMTP_TEST = "SMTP_TEST";
+    public static final String SCHEDULER_TASK_VIEW = "SCHEDULER_TASK_VIEW";
+    public static final String SCHEDULER_TASK_VIEW_ALL = "SCHEDULER_TASK_VIEW_ALL";
+    public static final String SCHEDULER_TASK_MANAGE = "SCHEDULER_TASK_MANAGE";
+    public static final String SCHEDULER_TASK_PUBLISH = "SCHEDULER_TASK_PUBLISH";
+    public static final String SCHEDULER_CALL_VIEW = "SCHEDULER_CALL_VIEW";
+    public static final String SCHEDULER_CALL_VIEW_ALL = "SCHEDULER_CALL_VIEW_ALL";
+    public static final String SCHEDULER_NOTIFY_VIEW = "SCHEDULER_NOTIFY_VIEW";
+    public static final String SCHEDULER_NOTIFY_MANAGE = "SCHEDULER_NOTIFY_MANAGE";
 
     public static final List<String> ALL = List.of(
             DASHBOARD_VIEW, STATS_VIEW, STATS_VIEW_ALL,
@@ -59,7 +67,10 @@ public final class Permissions {
             USER_VIEW, USER_CREATE, USER_UPDATE, USER_DELETE,
             ROLE_VIEW, ROLE_CREATE, ROLE_UPDATE, ROLE_DELETE,
             SYSTEM_HEALTH_VIEW, SYSTEM_SETTINGS_VIEW, SYSTEM_SETTINGS_UPDATE,
-            MAIL_CONFIG_VIEW, MAIL_CONFIG_UPDATE, SMTP_TEST
+            MAIL_CONFIG_VIEW, MAIL_CONFIG_UPDATE, SMTP_TEST,
+            SCHEDULER_TASK_VIEW, SCHEDULER_TASK_VIEW_ALL, SCHEDULER_TASK_MANAGE, SCHEDULER_TASK_PUBLISH,
+            SCHEDULER_CALL_VIEW, SCHEDULER_CALL_VIEW_ALL,
+            SCHEDULER_NOTIFY_VIEW, SCHEDULER_NOTIFY_MANAGE
     );
 
     private Permissions() {}

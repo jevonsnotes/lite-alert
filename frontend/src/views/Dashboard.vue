@@ -59,6 +59,11 @@ const apiKeyStats = ref<Stats | null>(null)
 const topicRanking = ref<Stats | null>(null)
 const apiKeyRanking = ref<Stats | null>(null)
 
+const schedulerStats = ref<{ total: number; success: number; fail: number; successRate: number; trend: { bucket: string; success: boolean; count: number }[] } | null>(null)
+const schedulerChartEl = ref<HTMLDivElement | null>(null)
+let schedulerChart: echarts.ECharts | null = null
+const canViewScheduler = computed(() => auth.hasPermission('SCHEDULER_TASK_VIEW'))
+
 const trendValue = ref(14)
 const trendUnit = ref<Unit>('DAYS')
 const selectedTopicId = ref('')
@@ -187,6 +192,51 @@ async function init() {
   await loadAllStats()
 }
 
+async function loadSchedulerStats() {
+  if (!canViewScheduler.value) return
+  const now = new Date()
+  const from = new Date(now.getTime() - trendValue.value * dayMs(trendUnit.value))
+  try {
+    schedulerStats.value = await get('/scheduler/stats', {
+      params: { from: from.toISOString(), to: now.toISOString() }
+    })
+    await nextTick()
+    renderSchedulerChart()
+  } catch {
+    schedulerStats.value = null
+  }
+}
+
+function dayMs(unit: Unit) {
+  if (unit === 'MONTHS') return 30 * 86400_000
+  if (unit === 'YEARS') return 365 * 86400_000
+  return 86400_000
+}
+
+function renderSchedulerChart() {
+  if (!schedulerChartEl.value || !schedulerStats.value) return
+  if (!schedulerChart) schedulerChart = echarts.init(schedulerChartEl.value, theme.mode === 'dark' ? 'dark' : undefined)
+  const buckets = [...new Set(schedulerStats.value.trend.map(r => r.bucket))].sort()
+  const successOf = (b: string) => schedulerStats.value!.trend.find(r => r.bucket === b && r.success)?.count ?? 0
+  const failOf = (b: string) => schedulerStats.value!.trend.find(r => r.bucket === b && !r.success)?.count ?? 0
+  const fg = theme.mode === 'dark' ? '#cdd6f4' : '#1f2937'
+  const grid = theme.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
+  schedulerChart.setOption({
+    backgroundColor: 'transparent',
+    textStyle: { color: fg },
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { color: fg }, top: 0 },
+    grid: { left: 40, right: 20, top: 36, bottom: 30 },
+    xAxis: { type: 'category', data: buckets, axisLabel: { color: fg, fontSize: 11 }, axisLine: { lineStyle: { color: grid } } },
+    yAxis: { type: 'value', axisLabel: { color: fg }, splitLine: { lineStyle: { color: grid } } },
+    series: [
+      { name: '成功', type: 'line', data: buckets.map(successOf), smooth: true, color: '#10b981' },
+      { name: '失败', type: 'line', data: buckets.map(failOf), smooth: true, color: '#ef4444' }
+    ]
+  }, true)
+  schedulerChart.resize()
+}
+
 function chartFor(kind: 'overall' | 'topic' | 'apiKey') {
   if (kind === 'overall') return overallChart
   if (kind === 'topic') return topicChart
@@ -272,19 +322,23 @@ function disposeCharts() {
   overallChart?.dispose()
   topicChart?.dispose()
   apiKeyChart?.dispose()
+  schedulerChart?.dispose()
   overallChart = null
   topicChart = null
   apiKeyChart = null
+  schedulerChart = null
 }
 
 watch(() => theme.mode, () => {
   disposeCharts()
   renderCharts()
+  renderSchedulerChart()
 })
 
 onMounted(async () => {
   await loadOverview()
   await init()
+  await loadSchedulerStats()
   window.addEventListener('resize', onResize)
 })
 
@@ -292,6 +346,7 @@ function onResize() {
   overallChart?.resize()
   topicChart?.resize()
   apiKeyChart?.resize()
+  schedulerChart?.resize()
 }
 </script>
 
@@ -389,6 +444,27 @@ function onResize() {
     <el-alert v-else type="info" :closable="false">
       仪表盘趋势图需要统计查看权限。
     </el-alert>
+
+    <template v-if="canViewScheduler">
+      <el-row :gutter="16" class="metric-row">
+        <el-col :span="8">
+          <el-card class="metric"><div class="m-label">定时任务调用总数</div><div class="m-value">{{ schedulerStats?.total ?? 0 }}</div></el-card>
+        </el-col>
+        <el-col :span="8">
+          <el-card class="metric"><div class="m-label">成功</div><div class="m-value" style="color:#10b981">{{ schedulerStats?.success ?? 0 }}</div></el-card>
+        </el-col>
+        <el-col :span="8">
+          <el-card class="metric"><div class="m-label">成功率</div><div class="m-value">{{ ((schedulerStats?.successRate ?? 0) * 100).toFixed(1) }}%</div></el-card>
+        </el-col>
+      </el-row>
+
+      <el-card class="block chart-card">
+        <template #header>
+          <div class="card-head"><span>定时任务调用趋势</span></div>
+        </template>
+        <div ref="schedulerChartEl" class="chart" />
+      </el-card>
+    </template>
   </div>
 </template>
 

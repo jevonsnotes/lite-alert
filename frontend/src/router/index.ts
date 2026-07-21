@@ -36,6 +36,24 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ApiKeys.vue')
       },
       {
+        path: 'scheduler/tasks',
+        name: 'scheduler-tasks',
+        component: () => import('@/views/SchedulerTasks.vue'),
+        meta: { permission: 'SCHEDULER_TASK_VIEW' }
+      },
+      {
+        path: 'scheduler/calls',
+        name: 'scheduler-calls',
+        component: () => import('@/views/TaskCalls.vue'),
+        meta: { permission: 'SCHEDULER_CALL_VIEW' }
+      },
+      {
+        path: 'scheduler/notify-configs',
+        name: 'scheduler-notify-configs',
+        component: () => import('@/views/SchedulerNotifyConfigs.vue'),
+        meta: { permission: 'SCHEDULER_NOTIFY_VIEW' }
+      },
+      {
         path: 'contacts',
         name: 'contacts',
         component: () => import('@/views/Contacts.vue')

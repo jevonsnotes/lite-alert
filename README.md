@@ -19,6 +19,7 @@ Lite-Alert 是一个前后端一体的轻量级消息通知服务。它默认使
 - **消息转换与模板**：支持 JSONPath 字段映射、Mustache 模板变量、通道专属模板，以及 Webhook 出站 JSON/XML 模板与响应断言。
 - **多通知通道**：支持 EMAIL、DINGTALK、FEISHU、WECOM、WEBHOOK。
 - **投递管理**：投递任务持久化，支持异步派发、重试、失败记录、投递详情查询和敏感 payload 权限控制。
+- **定时任务**：支持主动定时调用（首期 API 任务），按 Cron 周期请求外部接口；请求体支持 none / form-data / urlencoded / raw(json/xml/text) 并自动生成 Content-Type；多条件响应体断言（AND/OR）；草稿/发布双轨（编辑保存不影响运行，发布才生效）；调用记录详情查询与仪表盘调用统计。
 - **管理后台**：命名空间、Topic、ApiKey、通知目标、审计、用户、角色、系统设置等页面。
 - **安全配置**：JWT 登录、RBAC 权限、Jasypt 配置加密、敏感字段脱敏与审计日志。
 

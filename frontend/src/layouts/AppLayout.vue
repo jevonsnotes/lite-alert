@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -13,7 +13,8 @@ import {
   DataAnalysis,
   Promotion,
   Moon,
-  Sunny
+  Sunny,
+  Timer
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -30,6 +31,12 @@ function logout() {
   auth.logout()
   router.push({ name: 'login' })
 }
+
+// Sync the latest permissions from the backend on layout mount, so menu items
+// reflect permission changes (e.g. newly granted roles) without forcing a re-login.
+onMounted(() => {
+  auth.refreshMe().catch(() => { /* ignore: keep cached snapshot on failure */ })
+})
 </script>
 
 <template>
@@ -58,6 +65,15 @@ function logout() {
           <el-icon><Key /></el-icon>
           <template #title>ApiKey</template>
         </el-menu-item>
+        <el-sub-menu v-if="auth.hasPermission('SCHEDULER_TASK_VIEW') || auth.hasPermission('SCHEDULER_CALL_VIEW')" index="/scheduler">
+          <template #title>
+            <el-icon><Timer /></el-icon>
+            <span>定时管理</span>
+          </template>
+          <el-menu-item v-if="auth.hasPermission('SCHEDULER_TASK_VIEW')" index="/scheduler/tasks">定时任务</el-menu-item>
+          <el-menu-item v-if="auth.hasPermission('SCHEDULER_CALL_VIEW')" index="/scheduler/calls">任务日志</el-menu-item>
+          <el-menu-item v-if="auth.hasPermission('SCHEDULER_NOTIFY_VIEW')" index="/scheduler/notify-configs">通知配置</el-menu-item>
+        </el-sub-menu>
         <el-menu-item v-if="auth.hasPermission('CONTACT_VIEW')" index="/contacts">
           <el-icon><Message /></el-icon>
           <template #title>通知目标</template>
