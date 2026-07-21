@@ -111,3 +111,49 @@ API 任务 SHALL 支持配置响应体断言：每个条件由「提取路径（
 - **WHEN** 一次执行因网络错误、HTTP 非 2xx 或断言不通过而失败
 - **THEN** 生成一条状态为失败的调用记录，含错误信息与（如可得的）状态码
 
+### Requirement: API 任务配置多态承载
+
+`API` 任务的配置类（`ApiTaskConfig`）SHALL 继承自多态基类 `TaskConfig`，并 SHALL 携带类型鉴别字段 `type`（值为 `API`）。系统 SHALL 在持久化与反序列化时按该鉴别字段把 JSON 还原为 `ApiTaskConfig`。该多态化 SHALL NOT 改变 API 任务既有的 HTTP 请求定义、请求体类型与自动 Content-Type、多条件响应断言、Cron 调度与执行结果落库行为（上述能力详见既有 requirements）。
+
+任务级发布快照的 `Meta`（name/description/cron/notifyConfigIds）与 `Timeouts`（connect/read/write）SHALL 由基类 `TaskConfig` 承载，`ApiTaskConfig` 继承之，使发布快照与超时配置对 API 与 TCP 任务统一可用。
+
+#### Scenario: API 配置携带类型鉴别字段
+
+- **WHEN** 系统序列化一个 API 任务的配置
+- **THEN** 序列化结果包含鉴别字段 `type`，其值为 `API`
+- **AND** 反序列化时按该字段还原为 `ApiTaskConfig`
+
+#### Scenario: 多态化不改变既有 HTTP 行为
+
+- **WHEN** 一个已发布的 API 任务到达 Cron 触发时刻
+- **THEN** 系统仍按既有的请求方法/URL/请求头/请求体/自动 Content-Type 构造请求
+- **AND** 仍按既有的多条件响应断言与 HTTP 状态码判定成功与否
+
+#### Scenario: 发布快照 meta 由基类承载
+
+- **WHEN** 系统发布一个 API 任务
+- **THEN** 任务级标量与通知绑定快照进由 `TaskConfig` 基类承载的 `Meta`
+- **AND** 引擎从已发布配置的基类 `Meta` 读取权威 Cron 与已发布通知绑定
+
+### Requirement: API 任务出站目标防护
+
+系统 SHALL 在 API 任务发起 HTTP 请求前，对其出站目标（从配置 URL 解析的 host/port，端口缺失时按协议默认补）施加与 TCP 任务一致的出站目标防护（详见 `task-target-guard`）。防护关闭时放行；防护开启时，命中拦截网段且未被允许网段覆盖的目标 SHALL 被拒绝，不发起 HTTP 请求，判定为执行失败并写调用记录与审计。
+
+#### Scenario: 防护关闭时 API 任务正常请求
+
+- **WHEN** 出站目标防护开关为关闭，一个 API 任务配置任意 URL
+- **THEN** 系统正常发起 HTTP 请求
+
+#### Scenario: 防护开启时拦截 API 任务的内网目标
+
+- **WHEN** 出站目标防护开启，一个 API 任务的 URL 解析出的 host 命中拦截网段
+- **THEN** 系统不发起 HTTP 请求
+- **AND** 该次执行判定为失败，`protocol` 为 `API`
+- **AND** 错误信息记录命中网段，并审计 `scheduler.task.target-blocked`
+
+#### Scenario: API 任务连接前调用防护
+
+- **WHEN** 一个已发布的 API 任务到达触发时刻
+- **THEN** 系统在发起 HTTP 请求前先从 URL 解析 host/port 并调用 `TaskTargetGuard.check`
+- **AND** 仅当校验通过后才发起请求
+
