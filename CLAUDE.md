@@ -58,10 +58,10 @@ Lite-Alert 是一个默认内置 H2、可切换外部数据库、前后端一体
 
 - 不在用户未要求时主动提交或推送代码。
 - 分支模型：`master`（主干/生产）+ `develop`（集成分支）+ `feature/<功能名>`（特性分支）。新功能从 `develop` 拉出 `feature/<功能名>` 分支开发，完成后合回 `develop`；不直接在 `master`/`develop` 上提交。修复/发布分支按需从对应分支拉出（如 `fix/<缺陷名>`、`release/<版本>`）。
-- 若用户要求提交，commit message 使用英文 Conventional Commits，例如：
-  - `test: add api key edit coverage`
-  - `feat: support api key and notify target management improvements`
-  - `fix: correct dashboard trend aggregation`
+- 若用户要求提交，commit message 使用 Conventional Commits：**类型前缀用英文**（`feat`/`fix`/`test`/`docs`/`refactor`/`style`/`chore`/`perf` 等），**正文用中文**。格式为 `<英文类型>: <中文简述>`，正文必要时换行展开中文说明。例如：
+  - `test: 补充 API Key 编辑功能的测试覆盖`
+  - `feat: 支持 API Key 与通知目标管理改进`
+  - `fix: 修正仪表盘趋势聚合`
 - 每次功能开发完成后，输出中文变更摘要、测试结果和未完成风险。
 
 ## 产品沟通规范
