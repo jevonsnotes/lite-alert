@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { get, post, patch, del } from '@/http'
 import { formatDateTime, formatRelative } from '@/utils/datetime'
+import { CopyDocument } from '@element-plus/icons-vue'
 
 type Scope = { type: 'TOPIC' | 'NAMESPACE'; id: string }
 type ApiKey = {
@@ -281,12 +282,17 @@ function scopeLabel(s: Scope) {
     </el-dialog>
 
     <el-dialog v-model="showFullKeyDialog" title="保存完整 ApiKey" width="540px" :close-on-click-modal="false" :close-on-press-escape="false">
-      <el-alert type="warning" :closable="false" show-icon>
+      <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 12px">
         关闭后将无法再次查看完整值，请立刻复制并妥善保存。
       </el-alert>
-      <pre class="key-block">{{ fullKey }}</pre>
-      <el-button type="primary" @click="copyFullKey">复制</el-button>
+      <div class="key-row">
+        <code class="key-block">{{ fullKey }}</code>
+        <el-tooltip content="复制" placement="top">
+          <el-button type="primary" :icon="CopyDocument" @click="copyFullKey" />
+        </el-tooltip>
+      </div>
       <template #footer>
+        <el-button type="primary" @click="copyFullKey">复制并保存</el-button>
         <el-button @click="showFullKeyDialog = false">我已保存</el-button>
       </template>
     </el-dialog>
@@ -298,7 +304,8 @@ function scopeLabel(s: Scope) {
 .actions { display:flex; align-items: center; gap: 8px; }
 .page-h { color: var(--la-fg); margin: 0; }
 .muted { color: var(--la-fg-muted); }
-.key-block { background: var(--la-bg); padding: 16px; border-radius: 6px; margin: 12px 0;
+.key-row { display: flex; align-items: stretch; gap: 8px; }
+.key-block { flex: 1; background: var(--la-bg); padding: 12px 14px; border-radius: 6px;
              color: var(--la-accent); font-family: ui-monospace, monospace; word-break: break-all;
-             border: 1px solid var(--la-border); }
+             border: 1px solid var(--la-border); display: flex; align-items: center; margin: 0; }
 </style>

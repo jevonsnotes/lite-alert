@@ -37,6 +37,11 @@ docker/config/
 backend/data/
 data/
 
+# ---------- Claude Code (local) ----------
+# skills/ is tracked (shared OpenSpec skills); commands/ and local settings are per-machine.
+.claude/commands/
+.claude/settings.local.json
+
 # ---------- Generated frontend bundles ----------
 # Vite writes hashed assets here on `mvn package`; index.html in git is a
 # placeholder used by `mvn spring-boot:run`.
