@@ -98,7 +98,7 @@ SchedulerEngine.run(taskId)
 定时任务执行后可主动推送通知到一个可复用的出站 Webhook，实现"任务异常 → 即时告警"。
 
 - **通知配置实体** `SchedulerNotifyConfig`（owner 私有、可复用）：方法/URL/请求头/raw-json 请求体模板 + `triggerOn`（SUCCESS/FAIL/ALWAYS，默认 FAIL）。
-- **变量渲染**：请求体模板经 `TemplateRenderer` 渲染，内置执行变量 `taskName/taskId/status/httpStatus/durationMs/error/triggeredAt/assertionPassed`，并支持响应体 JSONPath `{{$.response.xxx}}`（响应体包成 `{response: body}` 作 payload）。Mustache 默认 HTML 转义会在通知器内反转义，避免 `=`/`"` 等被破坏。
+- **变量渲染**：请求体模板经 `TemplateRenderer` 渲染，内置执行变量：通用 `taskName/taskId/status/protocol/durationMs/error/triggeredAt`，API 专属 `httpStatus/assertionPassed` 及响应体 `$.response.xxx`，TCP 专属 `tcpTarget/tcpOk`；并支持响应体 JSONPath `{{$.response.xxx}}`（响应体包成 `{response: body}` 作 payload）。TCP 任务下 `httpStatus`/`assertionPassed` 为空字符串。Mustache 默认 HTML 转义会在通知器内反转义，避免 `=`/`"` 等被破坏。前端「可用变量」按通用/API/TCP/助手函数分 tab 展示。
 - **双轨绑定**：任务通过 `notifyConfigIds` 绑定多个通知配置；草稿绑定存 `notify_config_ids_json` 列，发布时快照进 `publishedConfig.meta.notifyConfigIds`，引擎与通知派发只用已发布绑定（与 config 双轨一致）。编辑保存草稿不影响运行中的通知。
 - **派发**：`SchedulerEngine.run()` 写完调用记录后，遍历已发布通知绑定，对 `shouldFire`（triggerOn 匹配当前成败）者调 `SchedulerNotifier.send`（复用 `ApiTaskHttpExecutor` 发送）。每个通知独立 try-catch，失败仅审计 `scheduler.notify.failed`，不阻塞任务、不影响其他通知、不重试。
 - **权限**：`SCHEDULER_NOTIFY_VIEW`/`SCHEDULER_NOTIFY_MANAGE`，owner 私有；任务编辑页仅可选自己的通知配置。

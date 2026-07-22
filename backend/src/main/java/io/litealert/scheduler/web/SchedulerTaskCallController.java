@@ -125,8 +125,11 @@ public class SchedulerTaskCallController {
         m.put("id", c.getId());
         m.put("taskId", c.getTaskId());
         m.put("triggeredAt", c.getTriggeredAt() == null ? null : c.getTriggeredAt().toString());
+        m.put("protocol", c.getProtocol() == null ? "API" : c.getProtocol());
         m.put("method", c.getMethod());
         m.put("url", c.getUrl());
+        m.put("tcpTarget", c.getTcpTarget());
+        m.put("tcpOk", c.getTcpOk());
         m.put("httpStatus", c.getHttpStatus());
         m.put("durationMs", c.getDurationMs());
         m.put("status", c.getStatus() == null ? null : c.getStatus().name());

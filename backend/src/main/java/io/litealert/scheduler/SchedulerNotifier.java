@@ -103,6 +103,8 @@ public class SchedulerNotifier {
         m.put("error", nullSafe(ctx.error));
         m.put("triggeredAt", ctx.triggeredAt == null ? "" : ctx.triggeredAt.toString());
         m.put("assertionPassed", ctx.assertionPassed == null ? "" : String.valueOf(ctx.assertionPassed));
+        m.put("tcpTarget", nullSafe(ctx.tcpTarget));
+        m.put("tcpOk", ctx.tcpOk == null ? "" : String.valueOf(ctx.tcpOk));
         return m;
     }
 
@@ -125,5 +127,5 @@ public class SchedulerNotifier {
     public record RenderContext(String taskId, String taskName, String protocol, boolean success,
                                 Integer httpStatus, long durationMs, String error,
                                 Instant triggeredAt, Boolean assertionPassed,
-                                String responseBody) {}
+                                String responseBody, String tcpTarget, Boolean tcpOk) {}
 }

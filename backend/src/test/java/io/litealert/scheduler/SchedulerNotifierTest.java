@@ -29,12 +29,12 @@ class SchedulerNotifierTest {
 
     private SchedulerNotifier.RenderContext ctx(boolean success, String responseBody, String error) {
         return new SchedulerNotifier.RenderContext("st_1", "order-probe", "API", success,
-                200, 42L, error, Instant.now(), true, responseBody);
+                200, 42L, error, Instant.now(), true, responseBody, null, null);
     }
 
     private SchedulerNotifier.RenderContext tcpCtx(boolean success, String error) {
         return new SchedulerNotifier.RenderContext("st_tcp", "tcp-probe", "TCP", success,
-                null, 42L, error, Instant.now(), null, null);
+                null, 42L, error, Instant.now(), null, null, "10.0.0.5:3306", success);
     }
 
     @Test
@@ -68,10 +68,12 @@ class SchedulerNotifierTest {
 
     @Test
     void rendersProtocolVariableForTcpTask() {
-        SchedulerNotifyConfig c = cfg("{\"protocol\":\"{{protocol}}\",\"status\":\"{{status}}\",\"http\":\"{{httpStatus}}\"}");
+        SchedulerNotifyConfig c = cfg("{\"protocol\":\"{{protocol}}\",\"target\":\"{{tcpTarget}}\",\"ok\":\"{{tcpOk}}\",\"status\":\"{{status}}\",\"http\":\"{{httpStatus}}\"}");
         String rendered = notifier.renderBody(c, tcpCtx(false, "连接被拒绝"));
         assertThat(rendered).contains("\"protocol\":\"TCP\"");
         assertThat(rendered).contains("\"status\":\"FAIL\"");
+        assertThat(rendered).contains("\"target\":\"10.0.0.5:3306\"");
+        assertThat(rendered).contains("\"ok\":\"false\"");
         // TCP task exposes no httpStatus -> empty string
         assertThat(rendered).contains("\"http\":\"\"");
     }

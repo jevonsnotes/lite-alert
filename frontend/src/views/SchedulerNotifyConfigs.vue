@@ -31,17 +31,33 @@ const TRIGGERS: { label: string; value: TriggerOn }[] = [
   { label: '总是', value: 'ALWAYS' }
 ]
 
-const VARS = [
+// 通用变量：所有任务类型都可用
+const COMMON_VARS = [
   { name: 'taskName', display: '{{taskName}}', desc: '任务名称' },
   { name: 'taskId', display: '{{taskId}}', desc: '任务 ID' },
   { name: 'status', display: '{{status}}', desc: '执行结果 SUCCESS/FAIL' },
-  { name: 'httpStatus', display: '{{httpStatus}}', desc: 'HTTP 状态码' },
+  { name: 'protocol', display: '{{protocol}}', desc: '任务协议 API/TCP' },
   { name: 'durationMs', display: '{{durationMs}}', desc: '耗时（毫秒）' },
   { name: 'error', display: '{{error}}', desc: '错误信息' },
-  { name: 'triggeredAt', display: '{{triggeredAt}}', desc: '触发时间' },
+  { name: 'triggeredAt', display: '{{triggeredAt}}', desc: '触发时间' }
+]
+
+// API 专属变量
+const API_VARS = [
+  { name: 'httpStatus', display: '{{httpStatus}}', desc: 'HTTP 状态码' },
   { name: 'assertionPassed', display: '{{assertionPassed}}', desc: '断言是否通过' },
   { name: '$.response', display: '{{$.response}}', desc: '整段响应体（非 JSON 时为纯文本）' },
-  { name: '$.response.xxx', display: '{{$.response.xxx}}', desc: '响应体 JSONPath，如 $.data.diff' },
+  { name: '$.response.xxx', display: '{{$.response.xxx}}', desc: '响应体 JSONPath，如 $.data.diff' }
+]
+
+// TCP 专属变量
+const TCP_VARS = [
+  { name: 'tcpTarget', display: '{{tcpTarget}}', desc: 'TCP 目标 host:port' },
+  { name: 'tcpOk', display: '{{tcpOk}}', desc: '连接是否成功 true/false' }
+]
+
+// 通用过滤/转义助手（所有类型可用）
+const HELPER_VARS = [
   { name: '@json', display: '{{@json($.response)}}', desc: 'JSON 转义，安全嵌入含特殊字符的值（整段响应体建议用此包裹）' },
   { name: '@base64', display: '{{@base64($.response)}}', desc: 'Base64 编码' },
   { name: '@md5', display: '{{@md5($.response)}}', desc: 'MD5 哈希' },
@@ -50,6 +66,14 @@ const VARS = [
   { name: '@trim', display: '{{@trim($.response.code)}}', desc: '去首尾空格' },
   { name: '@substr', display: '{{@substr($.response.code|0|5)}}', desc: '截取子串 start|len' }
 ]
+
+const VAR_TABS = [
+  { label: '通用变量', vars: COMMON_VARS, hint: '所有任务类型可用' },
+  { label: 'API 变量', vars: API_VARS, hint: '仅 API 任务有值；TCP 任务下 httpStatus/assertionPassed 为空，响应体变量无值' },
+  { label: 'TCP 变量', vars: TCP_VARS, hint: '仅 TCP 任务有值；API 任务下为空' },
+  { label: '助手函数', vars: HELPER_VARS, hint: '通用过滤/转义助手，所有类型可用' }
+]
+const activeVarTab = ref(VAR_TABS[0].label)
 
 const varDialogVisible = ref(false)
 function openVarDialog() { varDialogVisible.value = true }
@@ -276,16 +300,21 @@ function removeHeader(i: number) { form.headers.splice(i, 1) }
       </template>
     </el-dialog>
 
-    <el-dialog v-model="varDialogVisible" title="可用变量" width="760px">
+    <el-dialog v-model="varDialogVisible" title="可用变量" width="780px">
       <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px">
-        在请求体模板中用对应语法插入变量，渲染时替换为实际值。整段响应体（尤其含 HTML/特殊字符）请用 @json 包裹以免破坏 JSON。
+        在请求体模板中用对应语法插入变量，渲染时替换为实际值。请按任务类型查看对应 tab；跨类型变量会在不适用的任务下渲染为空。整段响应体（尤其含 HTML/特殊字符）请用 @json 包裹以免破坏 JSON。
       </el-alert>
-      <el-table :data="VARS" size="small" border>
-        <el-table-column prop="display" label="用法" width="280">
-          <template #default="{ row }"><code>{{ row.display }}</code></template>
-        </el-table-column>
-        <el-table-column prop="desc" label="说明" />
-      </el-table>
+      <el-tabs v-model="activeVarTab">
+        <el-tab-pane v-for="tab in VAR_TABS" :key="tab.label" :label="tab.label" :name="tab.label">
+          <div class="muted" style="margin-bottom: 8px">{{ tab.hint }}</div>
+          <el-table :data="tab.vars" size="small" border>
+            <el-table-column prop="display" label="用法" width="300">
+              <template #default="{ row }"><code>{{ row.display }}</code></template>
+            </el-table-column>
+            <el-table-column prop="desc" label="说明" />
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
       <template #footer>
         <el-button type="primary" @click="varDialogVisible = false">知道了</el-button>
       </template>

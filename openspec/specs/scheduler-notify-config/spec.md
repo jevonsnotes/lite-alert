@@ -29,7 +29,7 @@ TBD - created by archiving change add-scheduler-notify. Update Purpose after arc
 
 ### Requirement: 通知配置请求体变量渲染
 
-通知配置的 raw-json 请求体 SHALL 支持模板变量，渲染时注入定时任务执行上下文。内置变量 SHALL 至少包含：taskName、taskId、status、httpStatus、durationMs、error、triggeredAt、assertionPassed，并支持以 `$.response.xxx` 形式引用本次执行响应体的 JSONPath 字段。
+通知配置的 raw-json 请求体 SHALL 支持模板变量，渲染时注入定时任务执行上下文。内置变量 SHALL 至少包含：通用 `taskName`、`taskId`、`status`、`protocol`、`durationMs`、`error`、`triggeredAt`；API 专属 `httpStatus`、`assertionPassed` 及响应体 JSONPath `$.response.xxx`；TCP 专属 `tcpTarget`、`tcpOk`。TCP 任务下 `httpStatus` 与 `assertionPassed` SHALL 为空字符串；API 任务下 `tcpTarget` 与 `tcpOk` SHALL 为空。
 
 #### Scenario: 渲染内置变量
 

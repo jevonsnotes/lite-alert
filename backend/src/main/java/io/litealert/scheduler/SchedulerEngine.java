@@ -309,7 +309,8 @@ public class SchedulerEngine {
                 call.getStatus() == SchedulerTaskCall.Status.SUCCESS,
                 call.getHttpStatus(), call.getDurationMs() == null ? 0L : call.getDurationMs(),
                 call.getErrorMessage(), call.getTriggeredAt(), call.getAssertionPassed(),
-                call.getResponseExcerpt());
+                call.getResponseExcerpt(),
+                call.getTcpTarget(), call.getTcpOk());
         for (io.litealert.scheduler.domain.SchedulerNotifyConfig cfg : notifyConfigStore.findByIds(ids)) {
             if (!notifier.shouldFire(cfg, ctx.success())) continue;
             try {
