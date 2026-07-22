@@ -190,7 +190,6 @@ function scopeLabel(s: Scope) {
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">ApiKey 管理</h2>
       <div class="actions">
         <el-input v-model="query" clearable placeholder="搜索名称 / 前缀 / 授权范围" style="width: 280px" />
         <el-button type="primary" @click="openCreate">+ 新建 ApiKey</el-button>
@@ -300,9 +299,8 @@ function scopeLabel(s: Scope) {
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header { display:flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; gap: 12px; }
 .actions { display:flex; align-items: center; gap: 8px; }
-.page-h { color: var(--la-fg); margin: 0; }
 .muted { color: var(--la-fg-muted); }
 .key-row { display: flex; align-items: stretch; gap: 8px; }
 .key-block { flex: 1; background: var(--la-bg); padding: 12px 14px; border-radius: 6px;

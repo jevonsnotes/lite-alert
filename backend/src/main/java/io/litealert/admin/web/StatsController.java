@@ -40,8 +40,8 @@ public class StatsController {
 
     @GetMapping("/daily")
     public Map<String, Object> daily(
-            @RequestParam(required = false) Integer value,
-            @RequestParam(required = false) String unit,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
             @RequestParam(required = false, defaultValue = "OVERALL") String dimension,
             @RequestParam(required = false) String topicId,
             @RequestParam(required = false) String apiKeyId) {
@@ -51,7 +51,7 @@ public class StatsController {
         String myId = permissionService.has(Permissions.STATS_VIEW) ? currentUser.idOrThrow() : null;
 
         Dimension dim = resolveDimension(dimension);
-        Window window = window(value, unit);
+        Window window = window(from, to);
         Map<String, Counters> buckets = new LinkedHashMap<>();
         for (int i = 0; i < window.days(); i++) {
             buckets.put(window.from().plusDays(i).toString(), new Counters());
@@ -67,8 +67,7 @@ public class StatsController {
 
         Map<String, Object> r = result(buckets);
         r.put("from", window.from().toString());
-        r.put("to", window.today().toString());
-        r.put("span", Map.of("value", window.span().getValue(), "unit", window.span().getUnit().name()));
+        r.put("to", window.to().toString());
         r.put("dimension", dim.name());
         if (topicId != null && !topicId.isBlank()) r.put("topicId", topicId);
         if (apiKeyId != null && !apiKeyId.isBlank()) r.put("apiKeyId", apiKeyId);
@@ -77,8 +76,8 @@ public class StatsController {
 
     @GetMapping("/ranking")
     public Map<String, Object> ranking(
-            @RequestParam(required = false) Integer value,
-            @RequestParam(required = false) String unit,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
             @RequestParam(required = false, defaultValue = "TOPIC") String dimension,
             @RequestParam(required = false, defaultValue = "10") Integer limit,
             @RequestParam(required = false) String topicId,
@@ -90,7 +89,7 @@ public class StatsController {
 
         Dimension dim = resolveDimension(dimension);
         if (dim == Dimension.OVERALL) dim = Dimension.TOPIC;
-        Window window = window(value, unit);
+        Window window = window(from, to);
         String selectedId = selectedRankingId(dim, topicId, apiKeyId);
         Map<String, Counters> counters = new HashMap<>();
         if (selectedId != null) counters.put(selectedId, new Counters());
@@ -114,7 +113,7 @@ public class StatsController {
         Dimension labelDimension = dim;
         r.put("dimension", dim.name());
         r.put("from", window.from().toString());
-        r.put("to", window.today().toString());
+        r.put("to", window.to().toString());
         r.put("labels", top.stream().map(e -> labelFor(labelDimension, e.getKey())).toList());
         r.put("accepted", top.stream().map(e -> e.getValue().accepted).toList());
         r.put("sent", top.stream().map(e -> e.getValue().sent).toList());
@@ -164,7 +163,7 @@ public class StatsController {
                     row.put("topicId", rs.getString("topic_id"));
                     row.put("apiKeyId", rs.getString("api_key_id"));
                     return row;
-                }, Timestamp.valueOf(window.from().atStartOfDay()), Timestamp.valueOf(window.today().plusDays(1).atStartOfDay().minusNanos(1)));
+                }, Timestamp.valueOf(window.from().atStartOfDay()), Timestamp.valueOf(window.to().plusDays(1).atStartOfDay().minusNanos(1)));
     }
 
     private void add(Counters c, String type) {
@@ -173,16 +172,41 @@ public class StatsController {
         else if ("notify.failed".equals(type) || "notify.give_up".equals(type)) c.failed++;
     }
 
-    private Window window(Integer value, String unitStr) {
-        SystemSettings.Span span = resolveSpan(value, unitStr);
+    /**
+     * Resolve the query window from absolute {@code from}/{@code to} date strings ({@code yyyy-MM-dd}).
+     * When either bound is missing, falls back to the system {@code dashboardDefaultTrend} window
+     * (anchored at today). {@code from} after {@code to} is normalized by swapping; spans longer
+     * than 365 days are capped to the most recent 365 days (matches the historical 365-day bucket cap).
+     */
+    private Window window(String fromStr, String toStr) {
         LocalDate today = ZonedDateTime.now(ZoneId.systemDefault()).toLocalDate();
-        LocalDate from = span.cutoff(today);
-        int days = (int) Math.min(3650, today.toEpochDay() - from.toEpochDay() + 1);
+        LocalDate from = parseDate(fromStr);
+        LocalDate to = parseDate(toStr);
+        if (from == null || to == null) {
+            SystemSettings.Span span = settingsService.current().getDashboardDefaultTrend();
+            if (from == null) from = span.cutoff(today);
+            if (to == null) to = today;
+        }
+        if (from.isAfter(to)) {
+            LocalDate tmp = from;
+            from = to;
+            to = tmp;
+        }
+        int days = (int) Math.min(3650, to.toEpochDay() - from.toEpochDay() + 1);
         if (days > 365) {
-            from = today.minusDays(364);
+            from = to.minusDays(364);
             days = 365;
         }
-        return new Window(span, today, from, days);
+        return new Window(from, to, days);
+    }
+
+    private LocalDate parseDate(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return LocalDate.parse(s.trim());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Dimension resolveDimension(String raw) {
@@ -217,16 +241,6 @@ public class StatsController {
         return false;
     }
 
-    private SystemSettings.Span resolveSpan(Integer value, String unitStr) {
-        SystemSettings.Span span = settingsService.current().getDashboardDefaultTrend();
-        if (value == null && (unitStr == null || unitStr.isBlank())) return span;
-        SystemSettings.Unit u;
-        try { u = unitStr == null ? span.getUnit() : SystemSettings.Unit.valueOf(unitStr.toUpperCase()); }
-        catch (IllegalArgumentException e) { u = span.getUnit(); }
-        int v = value == null ? span.getValue() : Math.max(1, value);
-        return new SystemSettings.Span(v, u);
-    }
-
     private Map<String, Object> result(Map<String, Counters> buckets) {
         List<String> labels = List.copyOf(buckets.keySet());
         Map<String, Object> r = new HashMap<>();
@@ -238,6 +252,6 @@ public class StatsController {
     }
 
     enum Dimension { OVERALL, TOPIC, APIKEY }
-    record Window(SystemSettings.Span span, LocalDate today, LocalDate from, int days) {}
+    record Window(LocalDate from, LocalDate to, int days) {}
     static class Counters { long accepted; long sent; long failed; }
 }

@@ -338,7 +338,6 @@ function removeCondition(i: number) { form.conditions.splice(i, 1) }
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">定时任务</h2>
       <div class="actions">
         <el-input v-model="query" clearable placeholder="搜索名称 / Cron / 状态" style="width: 280px" />
         <el-button type="primary" @click="openCreate">+ 新建任务</el-button>
@@ -570,9 +569,8 @@ function removeCondition(i: number) { form.conditions.splice(i, 1) }
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header { display:flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; gap: 12px; }
 .actions { display:flex; align-items: center; gap: 8px; }
-.page-h { color: var(--la-fg); margin: 0; }
 .muted { color: var(--la-fg-muted); font-size: 12px; }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; }
 .kv-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }

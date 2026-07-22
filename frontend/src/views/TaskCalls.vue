@@ -74,7 +74,12 @@ function protocolLabel(row: any) { return row?.protocol === 'TCP' ? 'TCP' : (row
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">任务日志</h2>
+      <div class="summary">
+        <el-tag type="info">总调用 {{ total }}</el-tag>
+        <el-tag type="success">成功 {{ successCount }}</el-tag>
+        <el-tag type="danger">失败 {{ total - successCount }}</el-tag>
+        <el-tag>成功率 {{ total ? ((successCount / total) * 100).toFixed(1) : '0.0' }}%</el-tag>
+      </div>
       <div class="actions">
         <el-select v-model="selectedTaskId" filterable clearable placeholder="选择任务" style="width: 280px" @change="resetAndLoad">
           <el-option label="全部任务" value="" />
@@ -87,13 +92,6 @@ function protocolLabel(row: any) { return row?.protocol === 'TCP' ? 'TCP' : (row
         </el-select>
         <el-button @click="loadCalls">刷新</el-button>
       </div>
-    </div>
-
-    <div class="summary">
-      <el-tag type="info">总调用 {{ total }}</el-tag>
-      <el-tag type="success">成功 {{ successCount }}</el-tag>
-      <el-tag type="danger">失败 {{ total - successCount }}</el-tag>
-      <el-tag>成功率 {{ total ? ((successCount / total) * 100).toFixed(1) : '0.0' }}%</el-tag>
     </div>
 
     <el-table :data="items" empty-text="暂无调用记录" @row-click="openDetail">
@@ -196,12 +194,11 @@ function protocolLabel(row: any) { return row?.protocol === 'TCP' ? 'TCP' : (row
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
 .actions { display:flex; align-items: center; gap: 8px; }
-.page-h { color: var(--la-fg); margin: 0; }
 .muted { color: var(--la-fg-muted); }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; }
-.summary { display: flex; gap: 8px; margin-bottom: 16px; }
+.summary { display: flex; gap: 8px; }
 .pager { margin-top: 16px; display: flex; justify-content: flex-end; }
 .error-text { color: var(--el-color-danger); word-break: break-all; }
 .excerpt { background: var(--la-bg); border: 1px solid var(--la-border); padding: 12px; border-radius: 6px;

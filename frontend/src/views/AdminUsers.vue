@@ -86,7 +86,6 @@ async function remove(u: any) {
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">用户管理</h2>
       <el-button type="primary" @click="openCreate">+ 新建用户</el-button>
     </div>
     <el-table :data="list">
@@ -147,6 +146,5 @@ async function remove(u: any) {
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-h { color: var(--la-fg); margin: 0; }
+.header { display:flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; }
 </style>

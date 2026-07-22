@@ -81,6 +81,7 @@ public class SystemSettingsService {
                 "actor", actor,
                 "auditRetention", spanToMap(incoming.getAuditRetention()),
                 "deliveryRetention", spanToMap(incoming.getDeliveryRetention()),
+                "schedulerCallRetention", spanToMap(incoming.getSchedulerCallRetention()),
                 "dashboardDefaultTrend", spanToMap(incoming.getDashboardDefaultTrend()),
                 "rateLimit", rlAudit,
                 "taskTargetGuard", tgAudit));
@@ -90,6 +91,7 @@ public class SystemSettingsService {
     void normalize(SystemSettings s) {
         if (s.getAuditRetention() == null) s.setAuditRetention(new SystemSettings.Span(90, SystemSettings.Unit.DAYS));
         if (s.getDeliveryRetention() == null) s.setDeliveryRetention(new SystemSettings.Span(90, SystemSettings.Unit.DAYS));
+        if (s.getSchedulerCallRetention() == null) s.setSchedulerCallRetention(new SystemSettings.Span(90, SystemSettings.Unit.DAYS));
         if (s.getDashboardDefaultTrend() == null) s.setDashboardDefaultTrend(new SystemSettings.Span(14, SystemSettings.Unit.DAYS));
         if (s.getRateLimit() == null) s.setRateLimit(SystemSettings.RateLimitConfig.builder().build());
         if (s.getPayloadMaskingSensitiveWords() == null) s.setPayloadMaskingSensitiveWords(SystemSettings.defaultSensitiveWords());
@@ -102,6 +104,7 @@ public class SystemSettingsService {
         if (rl.getPerIpPerMinute() < 1) rl.setPerIpPerMinute(30);
         clampSpan(s.getAuditRetention(), 1, 3650);
         clampSpan(s.getDeliveryRetention(), 1, 3650);
+        clampSpan(s.getSchedulerCallRetention(), 1, 3650);
         clampSpan(s.getDashboardDefaultTrend(), 1, 365);
     }
 

@@ -35,6 +35,7 @@ type TaskTargetGuardConfig = {
 type Settings = {
   auditRetention: Span
   deliveryRetention: Span
+  schedulerCallRetention: Span
   dashboardDefaultTrend: Span
   rateLimit: {
     perTopicPerMinute: number
@@ -57,6 +58,7 @@ const mailWrap = ref<{ overridden: boolean; config: MailConfigView } | null>(nul
 const settings = reactive<Settings>({
   auditRetention: { value: 90, unit: 'DAYS' },
   deliveryRetention: { value: 90, unit: 'DAYS' },
+  schedulerCallRetention: { value: 90, unit: 'DAYS' },
   dashboardDefaultTrend: { value: 14, unit: 'DAYS' },
   rateLimit: { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 },
   payloadMaskingSensitiveWords: [],
@@ -103,6 +105,7 @@ async function loadAll() {
     const s = await get<Settings>('/admin/settings')
     settings.auditRetention = s.auditRetention
     settings.deliveryRetention = s.deliveryRetention
+    settings.schedulerCallRetention = s.schedulerCallRetention ?? { value: 90, unit: 'DAYS' }
     settings.dashboardDefaultTrend = s.dashboardDefaultTrend
     settings.rateLimit = s.rateLimit ?? { perTopicPerMinute: 60, perApiKeyPerMinute: 200, perIpPerMinute: 30 }
     settings.payloadMaskingSensitiveWords = s.payloadMaskingSensitiveWords ?? []
@@ -165,6 +168,7 @@ async function saveSettings() {
     const saved = await put<Settings>('/admin/settings', {
       auditRetention: { ...settings.auditRetention },
       deliveryRetention: { ...settings.deliveryRetention },
+      schedulerCallRetention: { ...settings.schedulerCallRetention },
       dashboardDefaultTrend: { ...settings.dashboardDefaultTrend },
       rateLimit: { ...settings.rateLimit },
       payloadMaskingSensitiveWords: [...settings.payloadMaskingSensitiveWords],
@@ -173,6 +177,7 @@ async function saveSettings() {
     })
     settings.auditRetention = saved.auditRetention
     settings.deliveryRetention = saved.deliveryRetention
+    settings.schedulerCallRetention = saved.schedulerCallRetention ?? settings.schedulerCallRetention
     settings.dashboardDefaultTrend = saved.dashboardDefaultTrend
     settings.rateLimit = saved.rateLimit
     settings.payloadMaskingSensitiveWords = saved.payloadMaskingSensitiveWords ?? []
@@ -210,8 +215,6 @@ function addItem(list: string[], v: string, reset: () => void) {
 
 <template>
   <div>
-    <h2 class="page-h">系统设置</h2>
-
     <!-- ============ STATUS ============ -->
     <h3 class="section-h">实例状态</h3>
     <el-row :gutter="12" class="status-row" v-if="health">
@@ -258,6 +261,13 @@ function addItem(list: string[], v: string, reset: () => void) {
             <el-option v-for="u in UNITS" :key="u.value" :label="u.label" :value="u.value" />
           </el-select>
           <div class="muted">超过保留期的已完成投递记录会自动从数据库清理，未完成任务不会清理。修改后立即生效。</div>
+        </el-form-item>
+        <el-form-item label="定时任务调用记录保留">
+          <el-input-number v-model="settings.schedulerCallRetention.value" :min="1" :max="3650" size="small" />
+          <el-select v-model="settings.schedulerCallRetention.unit" size="small" style="width: 90px; margin-left: 8px">
+            <el-option v-for="u in UNITS" :key="u.value" :label="u.label" :value="u.value" />
+          </el-select>
+          <div class="muted">超过保留期的定时任务调用记录（桑基图、趋势统计所读数据）会自动清理。默认 90 天，修改后立即生效。</div>
         </el-form-item>
         <el-form-item label="限流 — 全局 Topic">
           <el-input-number v-model="settings.rateLimit.perTopicPerMinute" :min="1" :max="99999" size="small" />
@@ -438,7 +448,6 @@ function addItem(list: string[], v: string, reset: () => void) {
 </template>
 
 <style scoped>
-.page-h { color: var(--la-fg); margin: 0 0 16px; }
 .section-h { color: var(--la-fg); font-size: 15px; margin: 24px 0 12px; }
 
 .status-row { margin-bottom: 8px; }

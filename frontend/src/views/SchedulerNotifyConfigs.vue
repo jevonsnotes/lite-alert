@@ -207,16 +207,11 @@ function removeHeader(i: number) { form.headers.splice(i, 1) }
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">通知配置</h2>
       <div class="actions">
         <el-input v-model="query" clearable placeholder="搜索名称 / 方法 / 地址 / 触发时机" style="width: 300px" />
         <el-button type="primary" @click="openCreate">+ 新建通知配置</el-button>
       </div>
     </div>
-
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px">
-      通知配置用于定时任务执行后主动推送通知。请求体可用变量见下方「可用变量」。
-    </el-alert>
 
     <el-table :data="filteredList" empty-text="尚无通知配置">
       <el-table-column prop="name" label="名称" width="160" />
@@ -323,9 +318,8 @@ function removeHeader(i: number) { form.headers.splice(i, 1) }
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header { display:flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; gap: 12px; }
 .actions { display:flex; align-items: center; gap: 8px; }
-.page-h { color: var(--la-fg); margin: 0; }
 .muted { color: var(--la-fg-muted); font-size: 12px; }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; }
 .kv-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }

@@ -36,10 +36,6 @@ type AuditResp = {
   stats: {
     from: string
     to: string
-    filesScanned: number
-    filesMissing: number
-    rawLines: number
-    parseFailed: number
     matched: number
     visible: number
     canViewAll: boolean
@@ -200,14 +196,8 @@ const emptyHint = ref('')
 function refreshEmptyHint() {
   if (!stats.value) { emptyHint.value = ''; return }
   const s = stats.value
-  if (s.filesScanned === 0) {
-    emptyHint.value = `${s.from} 至 ${s.to} 区间没有任何审计文件。换个时间范围试试。`
-  } else if (s.rawLines === 0) {
-    emptyHint.value = '范围内的文件都是空的（启动后还没有任何事件）。'
-  } else if (s.parseFailed > 0 && s.parseFailed === s.rawLines) {
-    emptyHint.value = `${s.rawLines} 行全部解析失败，可能是文件被旧版本写花了。`
-  } else if (s.matched === 0) {
-    emptyHint.value = `区间内有 ${s.rawLines} 条记录，但没有匹配当前的事件类型 / 搜索条件。`
+  if (s.matched === 0) {
+    emptyHint.value = `${s.from} 至 ${s.to} 区间内没有匹配当前事件类型 / 搜索条件的记录，换个条件试试。`
   } else if (s.visible === 0) {
     emptyHint.value = `匹配的有 ${s.matched} 条，但当前用户（${s.userId}）没权限看 —— 这些事件属于别人的 Topic 或别的用户。`
   } else {
@@ -275,13 +265,6 @@ function prettyPayload(payload: any) {
 
 <template>
   <div>
-    <div class="page-head">
-      <h2 class="page-h">调用记录 / 审计日志</h2>
-      <span class="muted-inline">
-        当前用户：<code>{{ auth.user?.username }}</code>
-      </span>
-    </div>
-
     <div class="filters">
       <el-radio-group v-model="filterType" size="small" @change="reload">
         <el-radio-button v-for="t in QUICK_TYPES" :key="t.value" :value="t.value">{{ t.label }}</el-radio-button>
@@ -310,12 +293,6 @@ function prettyPayload(payload: any) {
 
     <div v-if="stats" class="stats-row">
       <span>区间：<code class="mono">{{ stats.from }}</code> ~ <code class="mono">{{ stats.to }}</code></span>
-      <el-divider direction="vertical" />
-      <span>扫描 {{ stats.filesScanned }} 个文件</span>
-      <el-divider direction="vertical" v-if="stats.parseFailed > 0" />
-      <span v-if="stats.parseFailed > 0" class="warn">解析失败 {{ stats.parseFailed }}</span>
-      <el-divider direction="vertical" />
-      <span>原始 {{ stats.rawLines }}</span>
       <el-divider direction="vertical" />
       <span>匹配 {{ stats.matched }}</span>
       <el-divider direction="vertical" />
@@ -453,13 +430,10 @@ function prettyPayload(payload: any) {
 </template>
 
 <style scoped>
-.page-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
-.page-h { color: var(--la-fg); margin: 0; }
 .filters { display: flex; gap: 12px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
 .stats-row { display: flex; align-items: center; gap: 4px; padding: 8px 12px; margin-bottom: 12px;
              background: var(--la-bg-elevated); border: 1px solid var(--la-border);
              border-radius: 6px; font-size: 12px; color: var(--la-fg-muted); }
-.warn { color: #f59e0b; }
 .search-group { display: flex; align-items: center; }
 .search-group :deep(.el-select .el-input__wrapper) {
   border-top-right-radius: 0;

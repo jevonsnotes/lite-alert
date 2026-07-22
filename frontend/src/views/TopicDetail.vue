@@ -642,7 +642,6 @@ const SUBSCRIBED_CHANNELS = computed(() => {
 <template>
   <!-- ============ NEW TOPIC ============ -->
   <div v-if="isNew">
-    <h2 class="page-h">新建 Topic</h2>
     <el-card class="block">
       <el-form label-width="120px">
         <el-form-item label="Topic 名称" required>
@@ -682,7 +681,6 @@ const SUBSCRIBED_CHANNELS = computed(() => {
   <div v-else-if="topic">
     <div class="header">
       <div>
-        <h2 class="page-h">{{ topic.namespaceName }} / {{ topic.name }}</h2>
         <el-tag :type="topic.status === 'PUBLISHED' ? 'success' : topic.status === 'DISABLED' ? 'danger' : 'info'">
           {{ topic.status }}
         </el-tag>
@@ -1163,7 +1161,6 @@ const SUBSCRIBED_CHANNELS = computed(() => {
   color: var(--la-accent);
 }
 
-.page-h { color: var(--la-fg); margin: 0 0 6px; display: inline-block; margin-right: 12px; }
 .header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .tabs { background: var(--la-bg-elevated); padding: 16px; border: 1px solid var(--la-border); border-radius: 8px; }
 .block { background: var(--la-bg-elevated); border: 1px solid var(--la-border); }

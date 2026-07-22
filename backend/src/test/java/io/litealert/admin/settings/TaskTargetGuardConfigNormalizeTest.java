@@ -62,6 +62,34 @@ class TaskTargetGuardConfigNormalizeTest {
     }
 
     @Test
+    void nullSchedulerCallRetentionFallsBackToDefault90Days() {
+        SystemSettings s = new SystemSettings();
+        s.setSchedulerCallRetention(null);
+        service.normalize(s);
+        assertThat(s.getSchedulerCallRetention().getValue()).isEqualTo(90);
+        assertThat(s.getSchedulerCallRetention().getUnit()).isEqualTo(SystemSettings.Unit.DAYS);
+    }
+
+    @Test
+    void schedulerCallRetentionPersistsAcrossSaveAndReload() {
+        DriverManagerDataSource ds = new DriverManagerDataSource(
+                "jdbc:h2:mem:sched_retention_persist;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        jdbc.execute("create table if not exists la_system_settings(id varchar(64) primary key, settings_json clob, updated_at timestamp)");
+        DbJson json = new DbJson(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules());
+        SystemSettingsService svc = new SystemSettingsService(jdbc, json, org.mockito.Mockito.mock(AuditLogger.class));
+
+        SystemSettings s = new SystemSettings();
+        s.setSchedulerCallRetention(new SystemSettings.Span(30, SystemSettings.Unit.DAYS));
+        svc.save(s, "u_1");
+
+        SystemSettingsService svc2 = new SystemSettingsService(jdbc, json, org.mockito.Mockito.mock(AuditLogger.class));
+        svc2.load();
+        assertThat(svc2.current().getSchedulerCallRetention().getValue()).isEqualTo(30);
+        assertThat(svc2.current().getSchedulerCallRetention().getUnit()).isEqualTo(SystemSettings.Unit.DAYS);
+    }
+
+    @Test
     void savePersistsAndRehydratesGuardConfig() {
         DriverManagerDataSource ds = new DriverManagerDataSource(
                 "jdbc:h2:mem:guard_settings_persist;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");

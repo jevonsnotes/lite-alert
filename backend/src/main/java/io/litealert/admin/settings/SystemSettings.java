@@ -17,6 +17,8 @@ public class SystemSettings {
 
     private Span auditRetention = new Span(90, Unit.DAYS);
     private Span deliveryRetention = new Span(90, Unit.DAYS);
+    /** Retention for scheduled-task call records (la_scheduler_task_call). Default 90 days. */
+    private Span schedulerCallRetention = new Span(90, Unit.DAYS);
     private Span dashboardDefaultTrend = new Span(14, Unit.DAYS);
     private RateLimitConfig rateLimit = new RateLimitConfig();
     private List<String> payloadMaskingSensitiveWords = defaultSensitiveWords();

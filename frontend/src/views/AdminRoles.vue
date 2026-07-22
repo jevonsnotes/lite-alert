@@ -57,7 +57,9 @@ const permTreeData = [
     { label: '定时任务_管理（SCHEDULER_TASK_MANAGE）', id: 'SCHEDULER_TASK_MANAGE' },
     { label: '定时任务_发布（SCHEDULER_TASK_PUBLISH）', id: 'SCHEDULER_TASK_PUBLISH' },
     { label: '调用记录_查看（SCHEDULER_CALL_VIEW）', id: 'SCHEDULER_CALL_VIEW' },
-    { label: '调用记录_查看（所有）（SCHEDULER_CALL_VIEW_ALL）', id: 'SCHEDULER_CALL_VIEW_ALL' }] },
+    { label: '调用记录_查看（所有）（SCHEDULER_CALL_VIEW_ALL）', id: 'SCHEDULER_CALL_VIEW_ALL' },
+    { label: '通知配置_查看（SCHEDULER_NOTIFY_VIEW）', id: 'SCHEDULER_NOTIFY_VIEW' },
+    { label: '通知配置_管理（SCHEDULER_NOTIFY_MANAGE）', id: 'SCHEDULER_NOTIFY_MANAGE' }] },
   { label: '通知目标', id: 'g_contact', children: [
     { label: '通知目标_查看（CONTACT_VIEW）', id: 'CONTACT_VIEW' },
     { label: '通知目标_查看（所有）（CONTACT_VIEW_ALL）', id: 'CONTACT_VIEW_ALL' },
@@ -145,7 +147,6 @@ async function remove(role: Role) {
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">角色管理</h2>
       <el-button type="primary" @click="openCreate">+ 新建角色</el-button>
     </div>
 
@@ -202,8 +203,7 @@ async function remove(role: Role) {
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-h { color: var(--la-fg); margin: 0; }
+.header { display:flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; }
 .muted { color: var(--la-fg-muted); font-size: 12px; }
 :deep(.el-tree-node__label) { font-size: 13px; }
 :deep(.el-form-item.perm-item .el-form-item__content) { display: block; width: 100%; }

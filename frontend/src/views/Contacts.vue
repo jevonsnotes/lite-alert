@@ -149,16 +149,11 @@ function typeLabel(type: ChannelType) {
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">通知目标</h2>
       <div class="actions">
         <el-input v-model="query" clearable placeholder="搜索类型 / 名称 / 地址" style="width: 260px" />
         <el-button type="primary" @click="openCreate">+ 添加目标</el-button>
       </div>
     </div>
-
-    <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-      支持邮件 / 钉钉 / 飞书 / 企业微信群机器人。每个目标都可在 Topic「订阅」中勾选。
-    </el-alert>
 
     <el-table :data="filteredList" empty-text="尚未添加任何通知目标">
       <el-table-column label="类型" width="160">
@@ -222,9 +217,8 @@ function typeLabel(type: ChannelType) {
 </template>
 
 <style scoped>
-.header { display:flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header { display:flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; gap: 12px; }
 .actions { display:flex; align-items: center; gap: 8px; }
-.page-h { color: var(--la-fg); margin: 0; }
 .muted { color: var(--la-fg-muted); }
 .form-tip { color: var(--la-fg-muted); font-size: 12px; line-height: 1.4; margin-top: 6px; }
 </style>

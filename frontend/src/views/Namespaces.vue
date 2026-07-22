@@ -304,10 +304,9 @@ async function removeNamespace(ns: any) {
 <template>
   <div>
     <div class="header">
-      <h2 class="page-h">命名空间</h2>
       <div class="header-tools">
         <el-input v-model="search" placeholder="搜索 名称 / id / 描述 / 关联 Topic"
-                  clearable size="small" style="width: 320px" />
+                  clearable style="width: 320px" />
         <el-button type="primary" @click="newNamespace">+ 新建命名空间</el-button>
       </div>
     </div>
@@ -506,9 +505,8 @@ async function removeNamespace(ns: any) {
 </template>
 
 <style scoped>
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.header { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 16px; gap: 12px; }
 .header-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.page-h { color: var(--la-fg); margin: 0; }
 .namespace-table { width: 100%; }
 .topic-list { padding: 8px 16px; min-width: 0; }
 .topic-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--la-fg-muted); }
