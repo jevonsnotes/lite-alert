@@ -92,6 +92,24 @@ public class TopicStore {
         return t;
     }
 
+    /**
+     * Persist only the topic main row, without touching channel templates.
+     *
+     * <p>Used by {@code TopicService.copy}, which carries no in-memory templates
+     * on the copied topic and writes templates separately via
+     * {@link TopicChannelTemplateStore#copy}. Routing copy through {@link #save}
+     * instead would disassemble the borrowed source templates and write them,
+     * colliding with the subsequent dedicated copy and violating the
+     * {@code unique(topic_id, channel_type)} constraint.
+     */
+    public synchronized void saveMainRow(Topic t) {
+        if (findByIdWithoutTemplates(t.getId()).isPresent()) {
+            mapper.update(t);
+        } else {
+            mapper.insert(t);
+        }
+    }
+
     /** Internal find that does NOT assemble templates — used by save() to avoid infinite recursion. */
     private Optional<Topic> findByIdWithoutTemplates(String id) {
         Topic t = mapper.selectOneById(id);

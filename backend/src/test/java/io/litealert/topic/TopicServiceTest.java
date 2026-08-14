@@ -14,7 +14,9 @@ import io.litealert.topic.domain.TopicChannelTemplateStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
 
@@ -145,10 +147,23 @@ class TopicServiceTest {
         assertThat(copy.getDescription()).isEqualTo("copy");
         assertThat(copy.getStatus()).isEqualTo(Topic.Status.DRAFT);
         ArgumentCaptor<Topic> topicCaptor = ArgumentCaptor.forClass(Topic.class);
-        verify(store).save(topicCaptor.capture());
+        verify(store).saveMainRow(topicCaptor.capture());
         assertThat(topicCaptor.getValue().getPublishedAt()).isNull();
+        verify(templateStore).copy("t_1", copy.getId());
         verify(subscriptionStore).save(copy.getId(), List.of("c_1", "c_2"));
         verify(audit).log(eq("topic.copy"), any());
+    }
+
+    @Test
+    void copyIsTransactionalSoFailureRollsBackPartialWrites() throws NoSuchMethodException {
+        // copy() spans topic main row + channel templates + subscriptions.
+        // Without @Transactional a failure mid-way (e.g. a duplicate-key on the
+        // template table) leaves a committed half-written topic — exactly the
+        // "error shown but copy actually succeeded" symptom seen in production.
+        Method copy = TopicService.class.getMethod("copy", String.class, String.class, String.class, boolean.class);
+        assertThat(copy.isAnnotationPresent(Transactional.class))
+                .as("copy() must be @Transactional so partial writes roll back on failure")
+                .isTrue();
     }
 }
 
