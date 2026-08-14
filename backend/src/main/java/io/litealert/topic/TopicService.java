@@ -16,6 +16,7 @@ import io.litealert.topic.domain.TopicChannelTemplateStore;
 import io.litealert.topic.domain.TopicStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -201,6 +202,7 @@ public class TopicService {
                 "topicId", id));
     }
 
+    @Transactional
     public Topic copy(String id, String name, String description, boolean copyAsDraft) {
         Topic source = getOrThrow(id);
         validateName(name);
@@ -215,7 +217,7 @@ public class TopicService {
                 .updatedAt(null)
                 .publishedAt(copyAsDraft ? null : source.getPublishedAt())
                 .build();
-        store.save(copied);
+        store.saveMainRow(copied);
         templateStore.copy(id, copied.getId());
         subscriptionStore.save(copied.getId(), subscriptionStore.getOrEmpty(source.getId()).getContactIds());
         audit.log("topic.copy", Map.of(

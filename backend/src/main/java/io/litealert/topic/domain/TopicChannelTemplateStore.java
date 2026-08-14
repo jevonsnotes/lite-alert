@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 @Component
 @RequiredArgsConstructor
 public class TopicChannelTemplateStore {
@@ -54,12 +53,23 @@ public class TopicChannelTemplateStore {
         mapper.deleteByQuery(qw);
     }
 
-    /** Copy templates from one topic to another (used by topic copy). */
+    /**
+     * Copy templates from one topic to another (used by topic copy).
+     *
+     * <p>De-duplicates by {@code channelType} before inserting. The target table
+     * enforces {@code unique(topic_id, channel_type)}, and legacy source data may
+     * contain repeated rows per channel type (H2 never surfaced this, PostgreSQL
+     * does). A later row for the same channel type wins, mirroring source order.
+     */
     public void copy(String sourceTopicId, String targetTopicId) {
         List<TopicChannelTemplate> sources = findByTopicId(sourceTopicId);
         if (sources.isEmpty()) return;
-        Instant now = Instant.now();
+        Map<String, TopicChannelTemplate> dedupedByChannel = new LinkedHashMap<>();
         for (TopicChannelTemplate src : sources) {
+            dedupedByChannel.put(src.getChannelType(), src);
+        }
+        Instant now = Instant.now();
+        for (TopicChannelTemplate src : dedupedByChannel.values()) {
             TopicChannelTemplate copy = TopicChannelTemplate.builder()
                     .topicId(targetTopicId)
                     .channelType(src.getChannelType())
